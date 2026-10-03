@@ -12,6 +12,7 @@
 # Dev-oriented image (runs `next dev` with HMR). Prod multi-stage build
 # (`next build` + standalone output) lands in Phase 3.
 
+# node:24-alpine = active Node LTS (Krypton) on current Alpine.
 FROM node:24-alpine AS deps
 WORKDIR /app
 # Copy workspace-aware manifests: root + web + shared packages (lockfile must see every workspace)
