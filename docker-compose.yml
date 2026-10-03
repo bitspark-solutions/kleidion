@@ -1,0 +1,57 @@
+name: kleidion
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: kleidion
+      POSTGRES_PASSWORD: ${KLEIDION_DB_PASSWORD:-kleidion_dev_pw}
+      POSTGRES_DB: kleidion
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kleidion -d kleidion"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    ports:
+      - "${KLEIDION_DB_HOST_PORT:-15432}:5432"
+
+  server:
+    build:
+      context: ./apps/server
+    environment:
+      KLEIDION_ENV: development
+      KLEIDION_PORT: "8080"
+      KLEIDION_DATABASE_URL: postgres://kleidion:${KLEIDION_DB_PASSWORD:-kleidion_dev_pw}@db:5432/kleidion?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${KLEIDION_API_HOST_PORT:-18080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:${KLEIDION_API_HOST_PORT:-18080}
+    depends_on:
+      server:
+        condition: service_started
+    ports:
+      - "${KLEIDION_WEB_HOST_PORT:-13000}:3000"
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "${KLEIDION_MAIL_UI_HOST_PORT:-18025}:8025"
+      - "${KLEIDION_SMTP_HOST_PORT:-11025}:1025"
+
+volumes:
+  db-data:

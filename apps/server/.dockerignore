@@ -1,0 +1,6 @@
+# Server build context hygiene
+server
+*.exe
+*.test
+.git
+.env

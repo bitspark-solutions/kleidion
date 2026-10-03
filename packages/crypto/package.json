@@ -1,0 +1,12 @@
+{
+  "name": "@kleidion/crypto",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Kleidion client crypto: key derivation (2SKD/Argon2id), SRP-6a, vault+item encryption. Implemented in Phase 2 with TDD.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "echo \"crypto tests land in Phase 2\" && exit 0"
+  }
+}

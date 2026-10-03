@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  GO_VERSION: "1.26"
+  NODE_VERSION: "24"
+
+jobs:
+  server:
+    name: Go server
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/server/go.sum
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test (race)
+        run: go test -race ./...
+
+  web:
+    name: Web (Next.js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Typecheck
+        run: npm run web:typecheck
+      - name: Build
+        run: npm run web:build
+
+  compose-docker:
+    name: Compose smoke test (docker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose file
+        run: docker compose config -q
+      - name: Build images
+        run: docker compose build
+      - name: Boot stack
+        run: docker compose up -d
+      - name: Wait for API health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:18080/healthz >/dev/null; then echo "healthy after ${i}s"; exit 0; fi
+            sleep 1
+          done
+          docker compose logs
+          exit 1
+      - name: Verify readiness (db reachable)
+        run: curl -sf http://localhost:18080/readyz
+      - name: Verify migrations applied
+        run: |
+          docker compose exec -T db psql -U kleidion -d kleidion -c '\dt' | grep -E 'users|devices|sessions'
+      - name: Verify web serves
+        run: curl -sf http://localhost:13000 >/dev/null
+      - name: Teardown
+        if: always()
+        run: docker compose down -v
+
+  compose-podman:
+    name: Compose smoke test (podman)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install podman + podman-compose
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq podman podman-compose
+          podman --version
+          podman-compose --version
+      - name: Validate compose file
+        run: podman-compose config
+      - name: Boot stack with podman
+        run: podman-compose up -d --build
+      - name: Wait for API health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:18080/healthz >/dev/null; then echo "healthy after ${i}s"; exit 0; fi
+            sleep 1
+          done
+          podman-compose logs
+          exit 1
+      - name: Teardown
+        if: always()
+        run: podman-compose down -v

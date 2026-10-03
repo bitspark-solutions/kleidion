@@ -1,0 +1,12 @@
+{
+  "name": "@kleidion/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Kleidion shared types: zod schemas for API DTOs + generated TS client types. Populated as API endpoints land (Phase 2+).",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "echo \"core tests land with first schemas\" && exit 0"
+  }
+}

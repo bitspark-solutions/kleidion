@@ -1,0 +1,12 @@
+# Build context hygiene — never ship host artifacts into images
+**/node_modules
+**/.next
+**/dist
+**/target
+.git
+.hermes
+.env
+.env.*
+!.env.example
+apps/mobile
+apps/desktop/src-tauri/target
