@@ -1,3 +1,13 @@
-// @kleidion/core — shared zod schemas + API types (web, extension, desktop, mobile).
-// Populated in Phase 2 as the auth API takes shape.
-export const PHASE = "not-implemented";
+/**
+ * @kleidion/core — Phase 3 contract: zod schemas, inferred TS types,
+ * and a fetch-based API client. Authoritative spec:
+ * .hermes/plans/phase3-contract.md
+ */
+export * from "./schemas.js";
+export {
+  ApiError,
+  ApiResponseError,
+  createApiClient,
+  type ApiClientOptions,
+  type KleidionApiClient,
+} from "./api.js";

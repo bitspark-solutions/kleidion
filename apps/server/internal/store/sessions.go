@@ -78,6 +78,19 @@ func (s *Store) GetSessionByTokenHash(ctx context.Context, tokenHash []byte) (*S
 	return sess, nil
 }
 
+// GetDeviceOwner returns the user a device belongs to (for validating that a
+// sync cursor references one of the caller's own devices).
+func (s *Store) GetDeviceOwner(ctx context.Context, deviceID uuid.UUID) (uuid.UUID, error) {
+	var owner uuid.UUID
+	if err := s.Pool.QueryRow(ctx, `SELECT user_id FROM devices WHERE id = $1`, deviceID).Scan(&owner); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, ErrNotFound
+		}
+		return uuid.Nil, fmt.Errorf("get device owner: %w", err)
+	}
+	return owner, nil
+}
+
 // RevokeSession marks a session revoked (logout).
 func (s *Store) RevokeSession(ctx context.Context, id uuid.UUID) error {
 	_, err := s.Pool.Exec(ctx, `UPDATE sessions SET revoked_at = now() WHERE id = $1 AND revoked_at IS NULL`, id)

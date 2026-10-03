@@ -46,6 +46,13 @@ func NewRouter(log zerolog.Logger, st *store.Store, cfg config.Config) *gin.Engi
 		// against the TS client via golden vectors (packages/crypto/test/vectors).
 		if st != nil {
 			registerAuthRoutes(v1, auth.NewService(st), log)
+
+			// Phase 3: vaults, items, and delta sync. All routes behind
+			// session auth (Bearer token → SHA-256 hash lookup).
+			authed := v1.Group("", RequireSession(st))
+			registerVaultRoutes(authed, st)
+			registerItemRoutes(authed, st)
+			registerSyncRoutes(authed, st)
 		}
 		v1.GET("/status", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{

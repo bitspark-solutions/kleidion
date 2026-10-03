@@ -9,6 +9,7 @@
   "scripts": {
     "web:dev": "npm run dev --workspace @kleidion/web",
     "web:build": "npm run build --workspace @kleidion/web",
-    "web:typecheck": "npm run typecheck --workspace @kleidion/web"
+    "web:typecheck": "npm run typecheck --workspace @kleidion/web",
+    "core:test": "npm run test --workspace @kleidion/core"
   }
 }

@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS sync_cursors;
+DROP TABLE IF EXISTS item_versions;
+DROP TABLE IF EXISTS items;
+DROP TABLE IF EXISTS vault_keys;
+DROP TABLE IF EXISTS vaults;

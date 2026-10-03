@@ -13,8 +13,8 @@ import (
 )
 
 // ctxSessionID is the gin context key where the auth middleware stores the
-// resolved session id.
-const ctxSessionID = "kleidion.sessionID"
+// resolved session id (same value as the exported CtxSessionID).
+const ctxSessionID = CtxSessionID
 
 // authHandler holds the auth service for HTTP handlers.
 type authHandler struct {

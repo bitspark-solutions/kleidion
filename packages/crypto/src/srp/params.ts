@@ -15,7 +15,8 @@
 //     where H(N)/H(g) hash N as 256 bytes and g as the single byte 0x02, H(I)
 //     hashes the UTF-8 username, and s is the raw salt bytes.
 
-import { createHash } from "crypto";
+import { sha256Bytes, sha256HexOf } from "../sha256";
+import { fromHex, toHex, utf8Bytes } from "../encoding";
 
 // RFC 5054 Section 3, 2048-bit group modulus N.
 export const N_HEX =
@@ -38,23 +39,28 @@ export const g = 2n;
 
 /** SHA-256 over the concatenation of hex-string arguments. */
 export function sha256Hex(...hexArgs: string[]): string {
-  const h = createHash("sha256");
-  for (const arg of hexArgs) h.update(Buffer.from(arg, "hex"));
-  return h.digest("hex");
+  const parts = hexArgs.map((h) => fromHex(h));
+  return sha256HexOf(concat(parts));
 }
 
-/** SHA-256 over concatenated Buffers, returning a Buffer. */
-function sha256Buf(...bufs: Buffer[]): Buffer {
-  const h = createHash("sha256");
-  for (const b of bufs) h.update(b);
-  return h.digest();
+/** SHA-256 over concatenated byte arrays, returning raw bytes. */
+function sha256Buf(...bufs: Uint8Array[]): Uint8Array {
+  return sha256Bytes(concat(bufs));
 }
 
 /** SHA-256 over UTF-8 string arguments. */
 export function sha256Utf8(...args: string[]): string {
-  const h = createHash("sha256");
-  for (const arg of args) h.update(arg, "utf8");
-  return h.digest("hex");
+  return sha256HexOf(concat(args.map((a) => utf8Bytes(a))));
+}
+
+/** Concatenate byte arrays. */
+function concat(arrs: Uint8Array[]): Uint8Array {
+  let total = 0;
+  for (const a of arrs) total += a.length;
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const a of arrs) { out.set(a, off); off += a.length; }
+  return out;
 }
 
 /** Pad a hex value to N's byte-length (256 bytes), matching the ref's toHex(). */
@@ -68,10 +74,12 @@ export function padToN(hex: string): string {
 export const k = BigInt("0x" + sha256Hex(padToN(N.toString(16)), "02"));
 
 /** H(N) XOR H(g) — the fixed prefix of the SRP-6a proof M1. */
-const HN_XOR_HG: Buffer = (() => {
-  const HN = sha256Buf(Buffer.from(padToN(N.toString(16)), "hex"));
-  const HG = sha256Buf(Buffer.from("02", "hex"));
-  return Buffer.from(HN.map((b, i) => b ^ HG[i]));
+const HN_XOR_HG: Uint8Array = (() => {
+  const HN = sha256Buf(fromHex(padToN(N.toString(16))));
+  const HG = sha256Buf(fromHex("02"));
+  const out = new Uint8Array(HN.length);
+  for (let i = 0; i < HN.length; i++) out[i] = HN[i] ^ HG[i];
+  return out;
 })();
 
 /** modpow: base^exp mod m for bigints. */
@@ -102,20 +110,20 @@ export function computeM1(
   username: string,
   saltHex: string,
 ): string {
-  const HI = sha256Buf(Buffer.from(username, "utf8"));
-  const s = Buffer.from(saltHex, "hex");
-  const A = Buffer.from(padToN(A_hex), "hex");
-  const B = Buffer.from(padToN(B_hex), "hex");
-  const K = Buffer.from(K_hex, "hex");
-  return sha256Buf(HN_XOR_HG, HI, s, A, B, K).toString("hex");
+  const HI = sha256Buf(utf8Bytes(username));
+  const s = fromHex(saltHex);
+  const A = fromHex(padToN(A_hex));
+  const B = fromHex(padToN(B_hex));
+  const K = fromHex(K_hex);
+  return toHex(sha256Buf(HN_XOR_HG, HI, s, A, B, K));
 }
 
 /** M2 (server proof) = H( A | M1 | K ). */
 export function computeM2(A_hex: string, M1_hex: string, K_hex: string): string {
-  const A = Buffer.from(padToN(A_hex), "hex");
-  const M1 = Buffer.from(M1_hex, "hex");
-  const K = Buffer.from(K_hex, "hex");
-  return sha256Buf(A, M1, K).toString("hex");
+  const A = fromHex(padToN(A_hex));
+  const M1 = fromHex(M1_hex);
+  const K = fromHex(K_hex);
+  return toHex(sha256Buf(A, M1, K));
 }
 
 /**

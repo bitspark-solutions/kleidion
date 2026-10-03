@@ -15,6 +15,7 @@ export * from "./sodium";
 export * from "./kdf";
 export * from "./secretkey";
 export * from "./item";
+export * from "./password";
 export * from "./srp/params";
 export * from "./srp/client";
 export * from "./srp/server";
