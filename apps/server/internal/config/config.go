@@ -15,6 +15,12 @@ type Config struct {
 
 	// SessionSecret signs/verifies session tokens. Required in production.
 	SessionSecret string
+
+	// AllowedOrigins is a comma-separated exact-match allow-list of browser
+	// origins permitted to call the API (CORS). e.g.
+	// "http://localhost:13000,https://app.kleidion.com".
+	// Empty denies all cross-origin browser calls.
+	AllowedOrigins string
 }
 
 // Load reads configuration from environment variables and validates it.
@@ -24,6 +30,10 @@ func Load() (Config, error) {
 		Port:          getEnv("KLEIDION_PORT", "8080"),
 		DatabaseURL:   os.Getenv("KLEIDION_DATABASE_URL"),
 		SessionSecret: os.Getenv("KLEIDION_SESSION_SECRET"),
+		AllowedOrigins: getEnv("KLEIDION_ALLOWED_ORIGINS",
+			// Dev default: the compose web service's host port. Overridden in
+			// production via KLEIDION_ALLOWED_ORIGINS.
+			"http://localhost:13000"),
 	}
 
 	if cfg.Env != "development" && cfg.Env != "production" {

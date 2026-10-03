@@ -65,6 +65,12 @@ export interface CreateVaultInput {
   encryptedMeta: string;
   /** base64 24-byte nonce. */
   nonce: string;
+  /**
+   * base64 sealed-box (crypto_box_seal) of the vault key under the creator's
+   * master X25519 public key. The server stores it in vault_keys so the
+   * creator can unwrap their own vault key later. REQUIRED by the API.
+   */
+  wrappedVaultKey: string;
 }
 
 export function listVaults(): Promise<{ vaults: VaultMeta[] }> {

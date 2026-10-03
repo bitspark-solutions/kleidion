@@ -28,6 +28,13 @@ export interface VaultContextValue {
   setVaultKey: (key: Uint8Array | null) => void;
   sessionToken: string | null;
   setSessionToken: (token: string | null) => void;
+  /**
+   * Master X25519 public key (32 bytes), or null when locked. Needed to seal a
+   * vault key when creating a vault, because the server stores the creator's
+   * wrapped key in vault_keys (POST /v1/vaults requires `wrappedVaultKey`).
+   */
+  masterPublicKey: Uint8Array | null;
+  setMasterPublicKey: (pk: Uint8Array | null) => void;
   /** Vaults as returned by the server (meta is encrypted). */
   vaults: VaultMeta[];
   /** Decrypted display name per vault id ("" until decrypted/failed). */
@@ -45,15 +52,19 @@ export interface VaultProviderProps {
   vaultKey?: Uint8Array | null;
   /** Initial bearer session token for API calls. */
   sessionToken?: string | null;
+  /** Initial master X25519 public key (needed to create vaults). */
+  masterPublicKey?: Uint8Array | null;
 }
 
 export function VaultProvider({
   children,
   vaultKey: initialKey = null,
   sessionToken: initialToken = null,
+  masterPublicKey: initialPubKey = null,
 }: VaultProviderProps) {
   const [vaultKey, setVaultKey] = useState<Uint8Array | null>(initialKey);
   const [sessionToken, setSessionToken] = useState<string | null>(initialToken);
+  const [masterPublicKey, setMasterPublicKey] = useState<Uint8Array | null>(initialPubKey);
   const [vaults, setVaults] = useState<VaultMeta[]>([]);
   const [vaultNames, setVaultNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -132,13 +143,15 @@ export function VaultProvider({
       setVaultKey,
       sessionToken,
       setSessionToken,
+      masterPublicKey,
+      setMasterPublicKey,
       vaults,
       vaultNames,
       loading,
       error,
       refresh,
     }),
-    [vaultKey, sessionToken, vaults, vaultNames, loading, error, refresh],
+    [vaultKey, sessionToken, masterPublicKey, vaults, vaultNames, loading, error, refresh],
   );
 
   return <VaultContext.Provider value={value}>{children}</VaultContext.Provider>;

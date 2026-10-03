@@ -17,6 +17,7 @@ import {
   ready,
   searchHmac,
   toBase64,
+  wrapVaultKey,
 } from "@kleidion/crypto";
 import {
   createItem,
@@ -59,6 +60,7 @@ export default function VaultShell() {
   const {
     vaultKey,
     sessionToken,
+    masterPublicKey,
     vaults,
     vaultNames,
     loading: vaultsLoading,
@@ -387,16 +389,21 @@ export default function VaultShell() {
   const handleCreateVault = useCallback(
     async (name: string) => {
       if (!vaultKey) throw new Error("Vault is locked");
+      if (!masterPublicKey) throw new Error("Missing master public key — cannot seal the vault key");
       await ready();
       const enc = await encryptItem(vaultKey, JSON.stringify({ name }));
+      // Per ADR-006 the Phase 3 vault key IS the account symKey, so seal that
+      // same key to our own master public key for the vault_keys row.
+      const wrapped = await wrapVaultKey(vaultKey, masterPublicKey);
       await createVault({
         kind: "personal",
         encryptedMeta: toBase64(enc.ciphertext),
         nonce: toBase64(enc.nonce),
+        wrappedVaultKey: toBase64(wrapped),
       });
       await refreshVaults();
     },
-    [vaultKey, refreshVaults],
+    [vaultKey, masterPublicKey, refreshVaults],
   );
 
   // ---------------------------------------------------------------- render

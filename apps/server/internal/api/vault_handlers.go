@@ -119,9 +119,9 @@ func (h *vaultHandler) create(c *gin.Context) {
 
 // Sizes/lengths enforced by the contract.
 const (
-	nonceLen         = 24          // XChaCha20-Poly1305 nonce
-	searchHmacLen    = 32          // HMAC-SHA256 output
-	maxCiphertextLen = 1 << 20     // 1 MiB cap
+	nonceLen         = 24      // XChaCha20-Poly1305 nonce
+	searchHmacLen    = 32      // HMAC-SHA256 output
+	maxCiphertextLen = 1 << 20 // 1 MiB cap
 )
 
 // decodeB64Field decodes a base64 wire field. exactLen > 0 enforces an exact

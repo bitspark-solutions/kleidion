@@ -611,8 +611,8 @@ func TestIntegrationReadRoleForbidden(t *testing.T) {
 	// A non-member must NOT see the item at all (404, no existence leak).
 	e.token = adminToken
 	stranger, err := e.st.CreateUser(context.Background(), store.CreateUserRequest{
-		Email:               "stranger+" + uuid.NewString()[:8] + "@kleidion.test",
-		SrpSalt:             make([]byte, 16), SrpVerifier: []byte{2}, KdfAlgo: "argon2id",
+		Email:   "stranger+" + uuid.NewString()[:8] + "@kleidion.test",
+		SrpSalt: make([]byte, 16), SrpVerifier: []byte{2}, KdfAlgo: "argon2id",
 		KdfParams: []byte(`{}`), MasterPublicKey: make([]byte, 32),
 		EncryptedPrivateKey: []byte("x"), EncryptedSymKey: []byte("x"),
 	})

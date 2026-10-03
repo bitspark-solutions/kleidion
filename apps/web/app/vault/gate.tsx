@@ -39,16 +39,22 @@ import { useSession, requireSession, isUnlocked } from "@/lib/session";
 function useSessionKeyMaterial(): {
   vaultKey: Uint8Array | null;
   sessionToken: string | null;
+  masterPublicKey: Uint8Array | null;
 } {
   // Subscribe so lock/unlock (incl. the 15-min idle auto-lock) re-renders.
   useSession();
-  if (!isUnlocked()) return { vaultKey: null, sessionToken: null };
+  if (!isUnlocked()) return { vaultKey: null, sessionToken: null, masterPublicKey: null };
   try {
     // requireSession() throws when locked; guarded above, but stay defensive.
     const s = requireSession();
-    return { vaultKey: s.keys.symKey, sessionToken: s.sessionToken };
+    return {
+      vaultKey: s.keys.symKey,
+      sessionToken: s.sessionToken,
+      // Needed by POST /v1/vaults to seal the vault key into vault_keys.
+      masterPublicKey: s.keys.masterPublicKey,
+    };
   } catch {
-    return { vaultKey: null, sessionToken: null };
+    return { vaultKey: null, sessionToken: null, masterPublicKey: null };
   }
 }
 
@@ -83,9 +89,9 @@ function VaultGateInner({ children }: { children: ReactNode }) {
 }
 
 export function VaultGate({ children }: { children: ReactNode }) {
-  const { vaultKey, sessionToken } = useSessionKeyMaterial();
+  const { vaultKey, sessionToken, masterPublicKey } = useSessionKeyMaterial();
   return (
-    <VaultProvider vaultKey={vaultKey} sessionToken={sessionToken}>
+    <VaultProvider vaultKey={vaultKey} sessionToken={sessionToken} masterPublicKey={masterPublicKey}>
       <VaultGateInner>{children}</VaultGateInner>
     </VaultProvider>
   );

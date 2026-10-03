@@ -24,6 +24,10 @@ services:
       KLEIDION_ENV: development
       KLEIDION_PORT: "8080"
       KLEIDION_DATABASE_URL: postgres://kleidion:${KLEIDION_DB_PASSWORD:-kleidion_dev_pw}@db:5432/kleidion?sslmode=disable
+      # Browser origin allowed to call the API (CORS). The web service is
+      # published on a host port that scripts/gen-env.sh computes to dodge the
+      # WinNAT excluded-port ranges, so this must track it.
+      KLEIDION_ALLOWED_ORIGINS: http://localhost:${KLEIDION_WEB_HOST_PORT:-13000}
     depends_on:
       db:
         condition: service_healthy

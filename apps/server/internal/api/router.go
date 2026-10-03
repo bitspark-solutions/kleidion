@@ -20,6 +20,10 @@ func NewRouter(log zerolog.Logger, st *store.Store, cfg config.Config) *gin.Engi
 
 	r.Use(gin.Recovery())
 	r.Use(requestLogger(log))
+	// CORS must run before securityHeaders/routing so preflight OPTIONS is
+	// answered with Access-Control-Allow-* headers; otherwise the browser
+	// blocks every call from the web origin.
+	r.Use(CORS(cfg.AllowedOrigins))
 	r.Use(securityHeaders())
 
 	// Liveness/readiness (unauthenticated).
