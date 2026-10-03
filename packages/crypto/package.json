@@ -7,6 +7,17 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
-    "test": "echo \"crypto tests land in Phase 2\" && exit 0"
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "libsodium-wrappers-sumo": "^0.8.4"
+  },
+  "devDependencies": {
+    "@types/libsodium-wrappers-sumo": "^0.8.2",
+    "@types/node": "^24.19.1",
+    "secure-remote-password": "^0.3.1",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
   }
 }
