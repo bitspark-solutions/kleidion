@@ -54,11 +54,20 @@ func TestV1Status(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
-	var body map[string]string
+	// /v1/status returns mixed value types ("auth" is an object), so decode into
+	// map[string]any rather than map[string]string.
+	var body map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if body["api"] != "v1" {
 		t.Fatalf("body = %v, want api v1", body)
+	}
+	authInfo, ok := body["auth"].(map[string]any)
+	if !ok {
+		t.Fatalf("body.auth = %v (%T), want object", body["auth"], body["auth"])
+	}
+	if authInfo["srp"] != true {
+		t.Fatalf("body.auth = %v, want srp true", authInfo)
 	}
 }
