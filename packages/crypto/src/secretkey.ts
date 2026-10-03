@@ -1,15 +1,15 @@
 // Secret Key — the second factor in 2SKD. 128 bits of CSPRNG entropy, shown
 // to the user ONCE at signup (Emergency Kit) and stored only on their devices.
-// The server never sees it. Format mirrors the reference design's readable grouping so it
+// The server never sees it. Uses a readable hyphen-grouped format so it
 // can be printed/QR'd and hand-typed if ever needed.
 //
 // Layout: KL-<ACCOUNT_ID>-<26 secret chars>
-//   KL        = Kleidion version prefix (like the reference design's "A3")
+//   KL        = Kleidion version prefix (non-secret)
 //   ACCOUNT_ID = 6 non-secret chars (server-assigned account id fragment)
 //   26 chars  = 128-bit secret drawn from an unambiguous alphabet
 //
-// Alphabet excludes I/L/O/0/1/5/S/8 (visually confusable), matching the spirit
-// of the reference design's {2-9,A-H,J-N,P-T,V-Z} set.
+// Alphabet excludes visually confusable characters (I/L/O/0/1/5/S/8), giving a
+// 30-symbol set that is safe to hand-type from a printed Emergency Kit.
 
 import { ready, nacl } from "./sodium";
 import { fromHex, toHex } from "./encoding";

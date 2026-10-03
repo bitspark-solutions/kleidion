@@ -1,4 +1,4 @@
-// Key derivation — the 2SKD scheme from ADR-005 / the zero-knowledge password managers design.
+// Key derivation — the two-secret key derivation (2SKD) scheme from ADR-005.
 //
 //   AUK = Argon2id(password, aukSalt) XOR HKDF-SHA256(secretKeyBytes, ikm) 
 //   SRP-x = Argon2id(password, srpSalt) XOR HKDF-SHA256(secretKeyBytes, ikm)

@@ -3,7 +3,7 @@
 > **For Hermes:** Execute phase-by-phase with subagent-driven-development; each phase gets its own
 > detailed task breakdown written before that phase starts (this document is the master plan).
 
-**Goal:** Build a production-grade, end-to-end-encrypted password manager (web, browser extension,
+**Goal:** Build a zero-knowledge, end-to-end-encrypted password manager (web, browser extension,
 desktop, mobile, CLI) on a Go backend + Next.js frontend, fully containerized (Docker **and** Podman
 compatible) and orchestrated in dev with Tilt.
 
@@ -50,7 +50,8 @@ kleidion.com and rename the project folder `D:\projects\password-manager` →
 
 ## 1. How Zero-Knowledge Password Managers Work (Research Summary → Our Design Targets)
 
-From the published security design literature + current product surface (researched 2026-10-03):
+From published zero-knowledge password-manager security designs and common product surfaces
+(researched 2026-10-03):
 
 ### 1.1 Security architecture we will replicate
 1. **Zero-knowledge / E2EE:** all keys generated client-side; encryption/decryption only on user
@@ -68,7 +69,7 @@ From the published security design literature + current product surface (researc
      the recipient, no re-encryption of items needed
 4. **SRP-6a authentication** (RFC 5054, 2048-bit group): mutual auth, no password/verifier leak in
    transit, replay-proof, establishes a session key. Verifier is stored server-side; 2SKD makes it
-   uncrackable. Go library: `the in-repo RFC 5054 SRP-6a implementation` (the reference design's own, MIT).
+   uncrackable. SRP-6a is implemented in-repo (Go + TS) and cross-verified with golden vectors.
 5. **Emergency Kit:** printable PDF with email + Secret Key; no server-side password reset exists.
    Account recovery flows must never weaken zero-knowledge (we'll add social/SRP-based recovery
    options in later phases, e.g., trusted-contact recovery like 1P).
@@ -76,7 +77,7 @@ From the published security design literature + current product surface (researc
    t=3, p=4 as baseline) — better GPU/ASIC resistance, tunable per-device on mobile.
 
 ### 1.2 Feature surface we will target (phased)
-| zero-knowledge password managers feature | Kleidion phase |
+| Reference feature | Kleidion phase |
 |---|---|
 | Vaults (personal/shared), items (Login, Card, Identity, Secure Note, SSH key, Document) | P3 |
 | Password/passphrase generator (recipes, history) | P3 |
@@ -85,8 +86,8 @@ From the published security design literature + current product surface (researc
 | Sharing (1:1, shared vaults, guest/time-limited links) | P4 |
 | Passkeys (WebAuthn discoverable credentials) | P5 |
 | Built-in TOTP (2FA codes next to passwords) | P4 |
-| security-health dashboard: breach (HIBP k-anonymity), reuse, weak-password audit | P6 |
-| travel masking | P6 |
+| Security-health dashboard: breach (HIBP k-anonymity), reuse, weak-password audit | P6 |
+| Travel masking (hide vaults at borders) | P6 |
 | Desktop apps w/ biometric unlock, system tray, global hotkey | P5 |
 | Mobile apps w/ OS autofill providers, biometric unlock | P5 |
 | SSH agent + CLI (`op`) + service accounts | P7 |
@@ -138,7 +139,7 @@ kleidion/
 │   ├── crypto/                  # TS: libsodium-wrappers — key derivation, item crypto, SRP client
 │   │   └── src/{kdf,srp,vault,item,secretkey,emergencykit}.ts + vitest tests
 │   ├── core/                    # TS: zod schemas shared web/extension/mobile + API types
-│   └── srp-go/                  # (vendored dep note: the in-repo RFC 5054 SRP-6a implementation)
+│   └── srp/                     # in-repo RFC 5054 SRP-6a (Go), golden-vector verified
 └── infra/
     ├── postgres/initdb.sql      # dev bootstrap
     ├── docker/                  # per-app containerfiles if not colocated
@@ -154,8 +155,8 @@ services; clients are versioned/released independently via tags (`web-vX.Y.Z`, e
 2025), battle-tested, frozen stable API, rich middleware ecosystem (CORS, rate-limit, JWT,
 request-id, recovery). Runner-up considered: `chi` (100% stdlib-compatible, leaner) — acceptable
 fallback if Gin's context abstraction ever conflicts with a dependency; decision recorded as ADR-002.
-Supporting libs: `pgx/v5` (Postgres), `golang-migrate` (migrations), `the in-repo RFC 5054 SRP-6a implementation`
-(SRP-6a), `golang.org/x/crypto` (argon2, hkdf, nacl), `go-playground/validator` (via Gin),
+Supporting libs: `pgx/v5` (Postgres), `golang-migrate` (migrations), SRP-6a implemented in-repo
+(`internal/auth/srp`, RFC 5054), `golang.org/x/crypto` (argon2, hkdf, nacl), `go-playground/validator` (via Gin),
 `rs/zerolog` (structured logs), `prometheus/client_golang` (metrics), `air` (dev hot-reload).
 
 ### 2.2 Frontend stack decisions
@@ -342,7 +343,7 @@ ships with 100% statement coverage requirement — it is the crown jewels.
 
 ### Phase 2 — Auth & crypto core (the hard security part) (1–2 weeks)
 - [ ] `packages/crypto`: full API from §5, TDD, cross-language SRP test vectors
-- [ ] Go SRP-6a server endpoints (enroll/start+finish, srp/start+finish) with `the in-repo RFC 5054 SRP-6a implementation`,
+- [ ] Go SRP-6a server endpoints (enroll/start+finish, srp/start+finish) using the in-repo SRP pkg,
       verifier storage, session tokens (random 256-bit, stored as SHA-256 hash), device registry
 - [ ] Web: signup flow (password strength meter → zxcvbn, Secret Key generation, Emergency Kit
       display + PDF download/print, mandatory "I saved it" gate), signin flow (email + password +
@@ -388,14 +389,14 @@ ships with 100% statement coverage requirement — it is the crown jewels.
       (iOS) and any app (Android).
 
 ### Phase 6 — Trust features (2 weeks)
-- [ ] security-health dashboard page: HIBP pwned-passwords k-anonymity check (range API, client-side), reused
+- [ ] Security-health page: HIBP pwned-passwords k-anonymity check (range API, client-side), reused
       passwords, weak passwords, sites without HTTPS, 2FA-coverage nudges, overall score
 - [ ] Passkeys: WebAuthn platform/authenticator credentials stored as items; extension + web
       conditional-UI autofill; desktop/mobile passkey provider where OS allows
-- [ ] travel masking: flag vaults safe-for-travel; devices enter travel state (flagged vaults' wrapped
+- [ ] Travel masking: flag vaults safe-for-travel; devices enter travel state (flagged vaults' wrapped
       keys evicted from server responses + local caches wiped)
 - [ ] Account recovery v1 (trusted contact / recovery kit re-enroll flow)
-- **Exit:** security-health dashboard flags a planted breached password; passkey signs into a demo RP; travel masking
+- **Exit:** security-health page flags a planted breached password; passkey signs into a demo RP; travel masking
       provably removes flagged vault bytes from device.
 
 ### Phase 7 — Scale-out & hardening (ongoing)
@@ -405,8 +406,8 @@ ships with 100% statement coverage requirement — it is the crown jewels.
 - [ ] Prod deployment: Quadlet/systemd podman units or k8s manifests; backups (encrypted WAL-G to
       S3); observability (Prometheus+Grafana+Loki in compose profiles)
 - [ ] **External security audit** (non-negotiable before public launch) + bug-bounty setup
-- [ ] Public launch: marketing site on kleidion.com, docs site, import tools (Bitwarden/
-      Chrome CSV), pricing/free tier decisions
+- [ ] Public launch: marketing site on kleidion.com, docs site, import tools (Bitwarden JSON,
+      browser CSV exports, generic JSON), pricing/free tier decisions
 
 ---
 
@@ -426,7 +427,7 @@ ships with 100% statement coverage requirement — it is the crown jewels.
 
 | Risk | Mitigation |
 |---|---|
-| Rolling own SRP/crypto is dangerous | Use vetted libs only (libsodium, the in-repo RFC 5054 SRP-6a implementation, x/crypto); no custom primitives; external audit in P7 |
+| Rolling own SRP/crypto is dangerous | Only vetted libs (libsodium, x/crypto); SRP-6a per RFC 5054 implemented in-repo and locked down by golden cross-language test vectors; external audit in P7 |
 | Podman-on-Windows quirks (npipe socket, registries.conf) | Verified compose subset; Tilt DOCKER_HOST docs; CI tests podman on Linux runners regardless |
 | Next 16 async-request-APIs breaking changes vs old scaffold | Scaffold is ~stock; codemod + rebuild is low-risk |
 | Browser extension stores (MV3 CSP vs WASM) | libsodium-wrappers is MV3-compatible (no remote code, wasm allowed with 'wasm-unsafe-eval') |
