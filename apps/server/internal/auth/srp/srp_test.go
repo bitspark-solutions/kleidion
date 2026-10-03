@@ -10,11 +10,11 @@ import (
 
 // goldenVector mirrors packages/crypto/test/vectors/srp-golden.json.
 type goldenVector struct {
-	Username          string `json:"username"`
-	Salt              string `json:"salt"`
-	X                 string `json:"x"`
-	Verifier          string `json:"verifier"`
-	ClientEphemeral   struct {
+	Username        string `json:"username"`
+	Salt            string `json:"salt"`
+	X               string `json:"x"`
+	Verifier        string `json:"verifier"`
+	ClientEphemeral struct {
 		Secret string `json:"secret"`
 		Public string `json:"public"`
 	} `json:"clientEphemeral"`

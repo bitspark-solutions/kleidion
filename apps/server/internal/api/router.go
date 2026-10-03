@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 
+	"github.com/kleidion/server/internal/auth"
 	"github.com/kleidion/server/internal/config"
 	"github.com/kleidion/server/internal/store"
 )
@@ -41,15 +42,16 @@ func NewRouter(log zerolog.Logger, st *store.Store, cfg config.Config) *gin.Engi
 
 	v1 := r.Group("/v1")
 	{
-		// Phase 2 will register auth routes here:
-		//   POST /v1/auth/enroll/start   POST /v1/auth/enroll/finish
-		//   POST /v1/auth/srp/start      POST /v1/auth/srp/finish
-		//   POST /v1/auth/logout
+		// Enrollment + SRP-6a sign-in. The SRP package is cross-verified
+		// against the TS client via golden vectors (packages/crypto/test/vectors).
+		if st != nil {
+			registerAuthRoutes(v1, auth.NewService(st), log)
+		}
 		v1.GET("/status", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"api":     "v1",
 				"version": "0.1.0",
-				"auth":    "not_yet_implemented",
+				"auth":    map[string]bool{"srp": true},
 			})
 		})
 	}
