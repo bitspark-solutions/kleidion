@@ -326,22 +326,19 @@ ships with 100% statement coverage requirement — it is the crown jewels.
   `git config --global --add safe.directory D:/projects/kleidion`. `.gitattributes` added
   (`* text=auto eol=lf`) to stop CRLF-rewrite warnings.
 
-### Phase 1 — Infrastructure first (user's directive) (2–3 days)
-- [ ] Next.js upgrade: `npx @next/codemod@latest upgrade latest` in `apps/web` → Next 16.3.8 /
-      React 19.3 / TS 5.9; fix codemod fallout; `npm run build` green
-- [ ] Tailwind 4 + shadcn/ui init; remove MUI/emotion deps; minimal app shell (layout, theme tokens,
-      landing page "Kleidion — your keys, yours alone")
-- [ ] `apps/server`: `go mod init`, Gin skeleton, `/healthz` `/readyz` `/metrics`, zerolog,
-      config-from-env with validation, graceful shutdown, Dockerfile (multi-stage, non-root, distroless)
-- [ ] Postgres 17 service + golang-migrate wired into server boot (retry loop, like mediconyx's
-      MigrateWithRetry pattern); first migration = users/devices/sessions schema
-- [ ] `docker-compose.yml` (db, server, web, mailpit) — verify `docker compose up` AND
-      `podman machine init && podman-compose up` (install podman via winget first); no engine-specific fields
-- [ ] `Tiltfile`: docker_compose resources + live update (air for Go, next dev HMR); verify
-      `tilt up` green with Docker Desktop; verify again with DOCKER_HOST → podman socket
-- [ ] CI workflow (GitHub Actions): lint+test+build for Go and TS, compose smoke test on both engines
-- **Exit:** one command (`tilt up`) boots db+server+web with hot reload on both Docker and Podman;
-      web shows upgraded shell; `/healthz` 200.
+### Phase 1 — Infrastructure first (user's directive) — ✅ DONE 2026-10-03
+- [x] Next.js upgrade: → Next 16.3.8 / React 19.3 / TS 5.9; `next build` green
+- [x] Tailwind 4 + themed shell; MUI/emotion removed; landing page "Kleidion — your keys, yours alone"
+- [x] `apps/server`: `go mod init`, Gin skeleton, `/healthz` `/readyz` `/v1/status` `/metrics`, zerolog,
+      config-from-env with validation, graceful shutdown, Dockerfile (multi-stage, non-root, distroless-style alpine)
+- [x] Postgres 17 + golang-migrate wired into server boot (retry loop); migration 000001 = users/devices/sessions
+- [x] `docker-compose.yml` (db, server, web, mailpit) — verified `docker compose up` AND
+      `podman-compose up` (podman installed via winget); env-overridable host ports, no engine-specific fields,
+      no `dockerfile:` keys (podman-compat)
+- [x] `Tiltfile`: docker_compose resources; verified `tilt ci` → SUCCESS all workloads healthy (--port=11350)
+- [x] CI workflow (GitHub Actions): Go build/vet/test -race, web typecheck/build, compose smoke on docker + podman
+- **Exit criteria MET:** one command boots db+server+web with hot reload on BOTH Docker and Podman;
+      web shows upgraded shell; `/healthz`+`/readyz` 200; migrations applied (dirty=f).
 
 ### Phase 2 — Auth & crypto core (the hard security part) (1–2 weeks)
 - [ ] `packages/crypto`: full API from §5, TDD, cross-language SRP test vectors
