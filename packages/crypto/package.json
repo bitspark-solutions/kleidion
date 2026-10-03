@@ -14,7 +14,6 @@
     "libsodium-wrappers-sumo": "^0.8.4"
   },
   "devDependencies": {
-    "@types/libsodium-wrappers-sumo": "^0.8.2",
     "@types/node": "^24.19.1",
     "secure-remote-password": "^0.3.1",
     "typescript": "^5.9.3",
