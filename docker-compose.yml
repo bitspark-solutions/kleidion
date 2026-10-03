@@ -36,9 +36,11 @@ services:
       retries: 6
 
   web:
+    # Build context = repo root (npm workspaces need root manifests + packages/*).
+    # No `dockerfile:` key — both engines auto-discover the Dockerfile at the
+    # context root. (podman-compose 1.6.0 ignores `dockerfile:` entirely.)
     build:
       context: .
-      dockerfile: apps/web/Dockerfile
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:${KLEIDION_API_HOST_PORT:-18080}
     depends_on:

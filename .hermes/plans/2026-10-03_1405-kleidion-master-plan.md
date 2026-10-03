@@ -304,6 +304,28 @@ ships with 100% statement coverage requirement — it is the crown jewels.
 - [ ] Move Next app → `apps/web`; delete firebase/next-auth files; npm workspaces install
 - **Exit:** `git log` shows clean history; `npm ls` resolves workspaces.
 
+### Windows host quirks discovered during Phase 1 (IMPORTANT)
+- **Host port clashes:** other local projects (credivect, mediconyx, graphify) already bind
+  5432/8080/3000/1025/8025. All compose host ports are now env-overridable and default to
+  non-clashing values: db `15432`, api `18080`, web `13000`, mailpit `18025`/smtp `11025`.
+  Server↔db use the internal `5432`/`8080` (container network); only host mappings changed.
+- **Tilt UI port:** Tilt's default `:10350` is inside the WinNAT excluded range reserved by
+  Hyper-V/WSL (`netsh interface ipv4 show excludedportrange protocol=tcp`). Always run
+  `tilt up --port=11350` on this machine. Documented in the Tiltfile header.
+- **Tilt `dc_resource`:** does NOT accept `trigger=`/`config_paths=`/`live_update=` in this
+  version for compose resources (those are `k8s_resource`/`docker_build` concepts). Keep the
+  Tiltfile minimal — `docker_compose()` auto-creates resources; rebuild-on-change works from
+  compose build contexts. Next HMR handles web source without a rebuild.
+- **Podman on Windows:** installs to `C:\Program Files\RedHat\Podman` (winget `RedHat.Podman`),
+  not on PATH by default; machine uses WSL backend. `podman-compose` via `pip install`
+  (lands in `~/AppData/Roaming/Python/Python311/Scripts`). Do **NOT** set
+  `DOCKER_HOST=npipe://...` for podman-compose — podman CLI uses its native pipe; npipe schema
+  is unsupported by the podman Go client. `podman compose` subcommand delegates to Docker's
+  docker-compose provider — use the standalone `podman-compose` instead for true-podman testing.
+- **git on D: drive:** "dubious ownership" (folder owned by a different SID) → needs
+  `git config --global --add safe.directory D:/projects/kleidion`. `.gitattributes` added
+  (`* text=auto eol=lf`) to stop CRLF-rewrite warnings.
+
 ### Phase 1 — Infrastructure first (user's directive) (2–3 days)
 - [ ] Next.js upgrade: `npx @next/codemod@latest upgrade latest` in `apps/web` → Next 16.3.8 /
       React 19.3 / TS 5.9; fix codemod fallout; `npm run build` green

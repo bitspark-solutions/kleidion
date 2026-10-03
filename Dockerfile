@@ -1,6 +1,16 @@
 # syntax=docker/dockerfile:1
-# Kleidion web — dev-oriented image (runs `next dev` with hot reload via bind mount in Tilt).
-# Prod multi-stage build lands with Phase 3 (`next build` + standalone output).
+# Kleidion WEB app image.
+#
+# Lives at the repo root on purpose: the compose build context for `web` is the
+# repo root (so the image can access npm-workspace manifests + packages/*), and
+# BOTH `docker compose` and `podman-compose` auto-discover `Dockerfile` at the
+# context root. (podman-compose 1.6.0 ignores a `build.dockerfile:` key that
+# points outside the context, so we keep the Dockerfile at the context root
+# instead — see ADR-004.) The Go server has its own context+Dockerfile under
+# apps/server.
+#
+# Dev-oriented image (runs `next dev` with HMR). Prod multi-stage build
+# (`next build` + standalone output) lands in Phase 3.
 
 FROM node:24-alpine AS deps
 WORKDIR /app

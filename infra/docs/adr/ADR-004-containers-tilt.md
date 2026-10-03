@@ -18,6 +18,16 @@ Date: 2026-10-03 · Status: accepted
   (Quadlet systemd units or k8s) is Phase 7 and will consume the same images.
 
 ## Known pitfalls (documented, verified during Phase 1)
+- **podman-compose 1.6.0 ignores the `build.dockerfile:` key.** It runs
+  `podman build -t <name> <context>` and only auto-discovers a file named
+  `Dockerfile`/`Containerfile` at the *context root*. docker compose honors
+  `dockerfile:`; podman-compose does not. **Rule adopted: every service's build
+  context root contains its own `Dockerfile`, and no service uses a
+  `dockerfile:` key.** The web service's context is the repo root (npm
+  workspaces need root `package.json`/`package-lock.json` + `packages/*`), so
+  the web image's Dockerfile lives at `/Dockerfile`; the server's context is
+  `apps/server` with `apps/server/Dockerfile`. Verified: `podman-compose build`
+  AND `docker compose build` both succeed on all services.
 - Podman registry pushes need `registries.insecure = ['localhost']` in
   `/etc/containers/registries.conf` when using a local registry with Tilt.
 - `restart_container()` live-update is compose-only; for Go we rebuild (fast with layer cache)
