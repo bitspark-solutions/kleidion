@@ -4,7 +4,7 @@ Date: 2026-10-03 · Status: accepted (interim; supersedes part of ADR-005's vaul
 
 ## Context
 
-The Phase 3 contract specified 1Password-style **per-vault keys**: each vault has a
+The Phase 3 contract specified **per-vault keys**: each vault has a
 random 256-bit key, wrapped with every member's X25519 public key (`vault_keys`
 table), so sharing a vault means re-wrapping one key rather than re-encrypting items.
 
