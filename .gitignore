@@ -36,6 +36,9 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Screenshot scratch (headless Chrome UI captures)
+.shots/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*

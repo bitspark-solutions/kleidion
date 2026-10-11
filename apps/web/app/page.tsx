@@ -14,8 +14,23 @@ export default function Home() {
         Your keys, yours alone. Zero-knowledge password manager — end-to-end
         encrypted vaults for passwords, passkeys, cards and secure notes.
       </p>
+      <div className="flex items-center gap-3">
+        <a
+          href="/signup"
+          className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90"
+        >
+          Create account
+        </a>
+        <a
+          href="/signin"
+          className="rounded-md border border-border px-4 py-2 text-sm text-fg hover:text-accent"
+        >
+          Sign in
+        </a>
+      </div>
       <p className="rounded-full border border-border px-4 py-1.5 text-xs text-fg-muted">
-        Phase 1 · infrastructure scaffold — vault features land in Phase 3
+        Zero-knowledge: passwords, shared vaults, TOTP and browser autofill —
+        your keys never leave your devices.
       </p>
     </main>
   );
