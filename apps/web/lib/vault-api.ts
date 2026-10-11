@@ -86,6 +86,20 @@ export function createVault(
   });
 }
 
+/**
+ * PUT /v1/vaults/:id/wrapped-key — replace the CALLER's sealed vault key row.
+ * Used by the Phase 4 migration (re-wrap a Phase 3 symKey under the keypair).
+ */
+export function setWrappedKey(
+  vaultId: string,
+  wrappedVaultKey: string,
+): Promise<{ ok: true }> {
+  return request<{ ok: true }>(`/v1/vaults/${vaultId}/wrapped-key`, {
+    method: "PUT",
+    body: JSON.stringify({ wrappedVaultKey }),
+  });
+}
+
 // ----------------------------------------------------------------- items
 
 export interface ListItemsParams {
@@ -175,4 +189,106 @@ export function postCursor(input: {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+// ---------------------------------------------------------- shared vaults
+
+export interface VaultMemberInfo {
+  userId: string;
+  email: string;
+  role: "admin" | "write" | "read";
+  createdAt: string;
+}
+
+export interface UserLookup {
+  userId: string;
+  email: string;
+  /** hex X25519 public key — seal the vault key with this. */
+  masterPublicKey: string;
+}
+
+export function listMembers(vaultId: string): Promise<{ members: VaultMemberInfo[] }> {
+  return request<{ members: VaultMemberInfo[] }>(`/v1/vaults/${vaultId}/members`);
+}
+
+export function lookupUser(email: string): Promise<UserLookup> {
+  return request<UserLookup>(`/v1/users/lookup?email=${encodeURIComponent(email)}`);
+}
+
+export function addMember(
+  vaultId: string,
+  input: { email: string; role: VaultMemberInfo["role"]; wrappedVaultKey: string },
+): Promise<{ member: VaultMemberInfo }> {
+  return request<{ member: VaultMemberInfo }>(`/v1/vaults/${vaultId}/members`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function patchMemberRole(
+  vaultId: string,
+  userId: string,
+  role: VaultMemberInfo["role"],
+): Promise<{ ok: true }> {
+  return request<{ ok: true }>(`/v1/vaults/${vaultId}/members/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ role }),
+  });
+}
+
+export function removeMember(vaultId: string, userId: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>(`/v1/vaults/${vaultId}/members/${userId}`, {
+    method: "DELETE",
+  });
+}
+
+// ------------------------------------------------------------- share links
+
+/** ShareLink row as returned by the API (never contains the token). */
+export interface ShareLinkInfo {
+  id: string;
+  itemId: string;
+  recipientEmail: string | null;
+  viewOnly: boolean;
+  expiresAt: string;
+  maxViews: number | null;
+  views: number;
+  revokedAt: string | null;
+  createdAt: string;
+}
+
+export function createShareLink(input: {
+  itemId: string;
+  wrappedItem: string;
+  wrappedNonce: string;
+  recipientEmail?: string;
+  viewOnly: boolean;
+  expiresAt: string;
+  maxViews?: number;
+}): Promise<{ shareLink: ShareLinkInfo; token: string }> {
+  return request<{ shareLink: ShareLinkInfo; token: string }>("/v1/share-links", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function listShareLinks(): Promise<{ shareLinks: ShareLinkInfo[] }> {
+  return request<{ shareLinks: ShareLinkInfo[] }>("/v1/share-links");
+}
+
+export function revokeShareLink(id: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>(`/v1/share-links/${id}`, { method: "DELETE" });
+}
+
+/**
+ * Unauthenticated visitor redeem. Uses plain fetch (no bearer token); the
+ * request itself spends one view. Throws on 404 (gone/expired/exhausted).
+ */
+export function redeemShareLink(
+  token: string,
+): Promise<{ wrappedItem: string; wrappedNonce: string; viewOnly: boolean }> {
+  return request<{ wrappedItem: string; wrappedNonce: string; viewOnly: boolean }>(
+    `/v1/public/share-links/${token}`,
+    { method: "POST" },
+  );
 }

@@ -25,6 +25,10 @@ type Vault struct {
 	// Role is the calling user's vault_keys role; populated only by
 	// ListVaultsForUser / GetVaultMembership, empty otherwise.
 	Role string
+
+	// WrappedVaultKey is the calling user's vault key sealed to their X25519
+	// public key; populated only by ListVaultsForUser.
+	WrappedVaultKey []byte
 }
 
 // CreateVault inserts a vault plus the owner's vault_keys row (role admin)
@@ -66,7 +70,7 @@ func (s *Store) CreateVault(ctx context.Context, ownerID uuid.UUID, kind string,
 func (s *Store) ListVaultsForUser(ctx context.Context, userID uuid.UUID) ([]Vault, error) {
 	const q = `
 		SELECT v.id, v.owner_id, v.kind, v.encrypted_meta, v.nonce,
-		       v.created_at, v.updated_at, v.deleted_at, vk.role
+		       v.created_at, v.updated_at, v.deleted_at, vk.role, vk.wrapped_vault_key
 		FROM vaults v
 		JOIN vault_keys vk ON vk.vault_id = v.id AND vk.user_id = $1
 		WHERE v.deleted_at IS NULL
@@ -81,7 +85,7 @@ func (s *Store) ListVaultsForUser(ctx context.Context, userID uuid.UUID) ([]Vaul
 	for rows.Next() {
 		var v Vault
 		if err := rows.Scan(&v.ID, &v.OwnerID, &v.Kind, &v.EncryptedMeta, &v.Nonce,
-			&v.CreatedAt, &v.UpdatedAt, &v.DeletedAt, &v.Role); err != nil {
+			&v.CreatedAt, &v.UpdatedAt, &v.DeletedAt, &v.Role, &v.WrappedVaultKey); err != nil {
 			return nil, fmt.Errorf("scan vault: %w", err)
 		}
 		out = append(out, v)
@@ -117,6 +121,95 @@ func (s *Store) AddVaultKey(ctx context.Context, vaultID, userID uuid.UUID, wrap
 		return fmt.Errorf("add vault key: %w", err)
 	}
 	return nil
+}
+
+// SetOwnWrappedVaultKey replaces the caller's own wrapped vault key
+// (Phase 4 migration: re-wrap a Phase 3 symKey under the account keypair).
+// ErrNotFound when the caller is not a member.
+func (s *Store) SetOwnWrappedVaultKey(ctx context.Context, vaultID, userID uuid.UUID, wrappedVaultKey []byte) error {
+	const q = `UPDATE vault_keys SET wrapped_vault_key = $3 WHERE vault_id = $1 AND user_id = $2`
+	tag, err := s.Pool.Exec(ctx, q, vaultID, userID, wrappedVaultKey)
+	if err != nil {
+		return fmt.Errorf("set own wrapped vault key: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// VaultMember is one vault_keys row joined with member identity
+// (Phase 4 shared vaults).
+type VaultMember struct {
+	UserID    uuid.UUID
+	Email     string
+	Role      string
+	CreatedAt time.Time
+}
+
+// ListVaultMembers returns the members of a vault, oldest join first.
+func (s *Store) ListVaultMembers(ctx context.Context, vaultID uuid.UUID) ([]VaultMember, error) {
+	const q = `
+		SELECT vk.user_id, u.email, vk.role, vk.created_at
+		FROM vault_keys vk
+		JOIN users u ON u.id = vk.user_id
+		WHERE vk.vault_id = $1
+		ORDER BY vk.created_at`
+	rows, err := s.Pool.Query(ctx, q, vaultID)
+	if err != nil {
+		return nil, fmt.Errorf("list vault members: %w", err)
+	}
+	defer rows.Close()
+
+	var out []VaultMember
+	for rows.Next() {
+		var m VaultMember
+		if err := rows.Scan(&m.UserID, &m.Email, &m.Role, &m.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan vault member: %w", err)
+		}
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("vault member rows: %w", err)
+	}
+	return out, nil
+}
+
+// UpdateVaultKeyRole changes a member's role. ErrNotFound if the row is absent.
+func (s *Store) UpdateVaultKeyRole(ctx context.Context, vaultID, userID uuid.UUID, role string) error {
+	const q = `UPDATE vault_keys SET role = $3 WHERE vault_id = $1 AND user_id = $2`
+	tag, err := s.Pool.Exec(ctx, q, vaultID, userID, role)
+	if err != nil {
+		return fmt.Errorf("update vault key role: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// RemoveVaultKey revokes a member's access (deletes their vault_keys row).
+func (s *Store) RemoveVaultKey(ctx context.Context, vaultID, userID uuid.UUID) error {
+	const q = `DELETE FROM vault_keys WHERE vault_id = $1 AND user_id = $2`
+	tag, err := s.Pool.Exec(ctx, q, vaultID, userID)
+	if err != nil {
+		return fmt.Errorf("remove vault key: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// CountVaultAdmins returns how many admin members a vault has; used to
+// refuse demotions/removals of the last admin.
+func (s *Store) CountVaultAdmins(ctx context.Context, vaultID uuid.UUID) (int, error) {
+	const q = `SELECT count(*) FROM vault_keys WHERE vault_id = $1 AND role = 'admin'`
+	var n int
+	if err := s.Pool.QueryRow(ctx, q, vaultID).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count vault admins: %w", err)
+	}
+	return n, nil
 }
 
 // GetVaultMaxVersion returns the vault's current item version counter

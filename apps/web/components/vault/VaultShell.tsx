@@ -14,6 +14,7 @@ import {
   decryptItem,
   encryptItem,
   fromBase64,
+  generateVaultKey,
   ready,
   searchHmac,
   toBase64,
@@ -42,13 +43,7 @@ import VaultSidebar, {
 import ItemList from "./ItemList";
 import ItemDetail from "./ItemDetail";
 import ItemEditor from "./ItemEditor";
-
-// In-memory per-tab device id for the sync cursor (best-effort; the contract
-// requires a devices-table uuid, so failures are swallowed).
-const DEVICE_ID =
-  typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : "web-shell";
+import MembersDialog from "./MembersDialog";
 
 function parsePlain(json: string): ItemPlain {
   const p = JSON.parse(json) as ItemPlain;
@@ -58,8 +53,10 @@ function parsePlain(json: string): ItemPlain {
 
 export default function VaultShell() {
   const {
-    vaultKey,
+    getVaultKey,
     sessionToken,
+    userId,
+    deviceId,
     masterPublicKey,
     vaults,
     vaultNames,
@@ -88,6 +85,7 @@ export default function VaultShell() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [showMembers, setShowMembers] = useState(false);
   // Responsive pane control (mobile shows one pane at a time).
   const [mobilePane, setMobilePane] = useState<"list" | "detail">("list");
 
@@ -96,6 +94,9 @@ export default function VaultShell() {
     [vaults, selectedVaultId],
   );
   const canWrite = selectedVault ? selectedVault.role !== "read" : false;
+
+  // Phase 4 (ADR-006): one unsealed key per vault, selected by current vault.
+  const vaultKey = selectedVaultId ? getVaultKey(selectedVaultId) : null;
 
   // ---------------------------------------------------------------- items
 
@@ -118,19 +119,21 @@ export default function VaultShell() {
       try {
         const res = await listItems({ vaultId });
         setItems(res.items);
-        // Best-effort sync cursor; deviceId validation may reject — ignore.
-        postCursor({
-          vaultId,
-          lastVersion: res.serverVersion,
-          deviceId: DEVICE_ID,
-        }).catch(() => undefined);
+        // Persist the cursor under the real device id (ADR-006 gap fix).
+        if (deviceId) {
+          postCursor({
+            vaultId,
+            lastVersion: res.serverVersion,
+            deviceId,
+          }).catch(() => undefined);
+        }
       } catch (err) {
         setItemsError(err instanceof Error ? err.message : "Failed to load items");
       } finally {
         setItemsLoading(false);
       }
     },
-    [],
+    [deviceId],
   );
 
   // Auto-select the first vault once loaded.
@@ -387,23 +390,23 @@ export default function VaultShell() {
   );
 
   const handleCreateVault = useCallback(
-    async (name: string) => {
-      if (!vaultKey) throw new Error("Vault is locked");
+    async (name: string, kind: "personal" | "shared") => {
       if (!masterPublicKey) throw new Error("Missing master public key — cannot seal the vault key");
       await ready();
-      const enc = await encryptItem(vaultKey, JSON.stringify({ name }));
-      // Per ADR-006 the Phase 3 vault key IS the account symKey, so seal that
-      // same key to our own master public key for the vault_keys row.
-      const wrapped = await wrapVaultKey(vaultKey, masterPublicKey);
+      // Phase 4: every vault gets its own random key, sealed to the creator
+      // (ADR-006); sharing later re-wraps this same key per member.
+      const newKey = await generateVaultKey();
+      const enc = await encryptItem(newKey, JSON.stringify({ name }));
+      const wrapped = await wrapVaultKey(newKey, masterPublicKey);
       await createVault({
-        kind: "personal",
+        kind,
         encryptedMeta: toBase64(enc.ciphertext),
         nonce: toBase64(enc.nonce),
         wrappedVaultKey: toBase64(wrapped),
       });
       await refreshVaults();
     },
-    [vaultKey, masterPublicKey, refreshVaults],
+    [masterPublicKey, refreshVaults],
   );
 
   // ---------------------------------------------------------------- render
@@ -452,6 +455,7 @@ export default function VaultShell() {
             }}
             counts={counts}
             onCreateVault={handleCreateVault}
+            onManageMembers={() => setShowMembers(true)}
             canWrite
           />
         </div>
@@ -525,6 +529,19 @@ export default function VaultShell() {
           />
         </div>
       </div>
+
+      {showMembers && selectedVault && vaultKey && userId && (
+        <MembersDialog
+          vaultId={selectedVault.id}
+          vaultKey={vaultKey}
+          selfUserId={userId}
+          selfRole={selectedVault.role}
+          onClose={() => {
+            setShowMembers(false);
+            refreshVaults().catch(() => undefined);
+          }}
+        />
+      )}
 
       {editor && (
         <ItemEditor

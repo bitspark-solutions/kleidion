@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+/* Tailwind v4 can't see the sibling entrypoints from assets/, so list them. */
+@source "../entrypoints";
+
+@theme {
+  --color-bg: oklch(0.16 0.02 265);
+  --color-surface: oklch(0.21 0.025 265);
+  --color-surface-hover: oklch(0.26 0.03 265);
+  --color-border: oklch(0.32 0.03 265);
+  --color-fg: oklch(0.93 0.01 265);
+  --color-fg-muted: oklch(0.68 0.02 265);
+  --color-accent: oklch(0.72 0.15 165);
+  --color-accent-fg: oklch(0.18 0.03 165);
+  --color-danger: oklch(0.63 0.19 25);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  -webkit-font-smoothing: antialiased;
+}

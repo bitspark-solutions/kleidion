@@ -12,6 +12,10 @@ dist/
 *.tsbuildinfo
 next-env.d.ts
 
+# WXT extension dev/build artifacts
+.wxt/
+.output/
+
 # Go
 apps/server/server
 *.exe

@@ -30,7 +30,9 @@ export interface VaultSidebarProps {
   onSelectCategory: (category: VaultCategory) => void;
   /** Counts for the SELECTED vault: keys "logins"|"notes"|"cards"|"identities"|"all"|"favorites"|"trash". */
   counts: Partial<Record<VaultCategory, number>>;
-  onCreateVault: (name: string) => Promise<void>;
+  onCreateVault: (name: string, kind: "personal" | "shared") => Promise<void>;
+  /** Opens the member management dialog for the selected vault. */
+  onManageMembers: () => void;
   canWrite: boolean;
 }
 
@@ -59,10 +61,12 @@ export default function VaultSidebar({
   onSelectCategory,
   counts,
   onCreateVault,
+  onManageMembers,
   canWrite,
 }: VaultSidebarProps) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  const [shared, setShared] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function submitCreate(e: FormEvent) {
@@ -71,8 +75,9 @@ export default function VaultSidebar({
     if (!trimmed || busy) return;
     setBusy(true);
     try {
-      await onCreateVault(trimmed);
+      await onCreateVault(trimmed, shared ? "shared" : "personal");
       setName("");
+      setShared(false);
       setCreating(false);
     } finally {
       setBusy(false);
@@ -101,21 +106,32 @@ export default function VaultSidebar({
           )}
         </div>
         {creating && (
-          <form onSubmit={submitCreate} className="mb-2 flex gap-1">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Vault name"
-              autoFocus
-              className="min-w-0 flex-1 rounded-md border border-border bg-bg px-2 py-1 text-sm text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none"
-            />
-            <button
-              type="submit"
-              disabled={busy || !name.trim()}
-              className="rounded-md bg-accent px-2 py-1 text-xs font-medium text-accent-fg disabled:opacity-50"
-            >
-              {busy ? "…" : "Create"}
-            </button>
+          <form onSubmit={submitCreate} className="mb-2 space-y-1.5">
+            <div className="flex gap-1">
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Vault name"
+                autoFocus
+                className="min-w-0 flex-1 rounded-md border border-border bg-bg px-2 py-1 text-sm text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none"
+              />
+              <button
+                type="submit"
+                disabled={busy || !name.trim()}
+                className="rounded-md bg-accent px-2 py-1 text-xs font-medium text-accent-fg disabled:opacity-50"
+              >
+                {busy ? "…" : "Create"}
+              </button>
+            </div>
+            <label className="flex items-center gap-1.5 text-xs text-fg-muted">
+              <input
+                type="checkbox"
+                checked={shared}
+                onChange={(e) => setShared(e.target.checked)}
+                className="accent-accent"
+              />
+              Shared vault (invite members after creating)
+            </label>
           </form>
         )}
         <ul className="space-y-0.5">
@@ -144,6 +160,15 @@ export default function VaultSidebar({
             </li>
           ))}
         </ul>
+        {selectedVaultId && (
+          <button
+            type="button"
+            onClick={onManageMembers}
+            className="mt-2 w-full rounded-md border border-border px-2 py-1 text-left text-xs text-fg-muted hover:bg-surface-hover hover:text-fg"
+          >
+            👥 Manage members
+          </button>
+        )}
       </section>
 
       <section className="flex-1">

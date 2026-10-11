@@ -257,6 +257,7 @@ type SrpFinishResponse struct {
 	ServerProof  string     `json:"serverProof"` // hex, M2 — client MUST verify
 	UserID       string     `json:"userId"`
 	Email        string     `json:"email"`
+	DeviceID     string     `json:"deviceId"` // ADR-006 known gap: lets clients post real sync cursors
 	KeyBundle    *KeyBundle `json:"keyBundle"`
 }
 
@@ -320,6 +321,7 @@ func (s *Service) SrpFinish(ctx context.Context, req *SrpFinishRequest) (*SrpFin
 		ServerProof:  hex.EncodeToString(sess.ServerProof),
 		UserID:       user.ID.String(),
 		Email:        user.Email,
+		DeviceID:     deviceID.String(),
 		KeyBundle: &KeyBundle{
 			MasterPublicKey:     hex.EncodeToString(user.MasterPublicKey),
 			EncryptedPrivateKey: base64.StdEncoding.EncodeToString(user.EncryptedPrivateKey),

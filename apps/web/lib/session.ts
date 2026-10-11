@@ -19,7 +19,7 @@ export interface KeyMaterial {
   masterPublicKey: Uint8Array;
   /** X25519 seed (32 bytes) — keypair is re-derivable from it. */
   privateKeySeed: Uint8Array;
-  /** X25519 private key (64 bytes, sodium layout). */
+  /** X25519 private key (32-byte secret key). */
   privateKey: Uint8Array;
   /** Vault-independent symmetric key (32 bytes), AUK-wrapped at rest. */
   symKey: Uint8Array;
@@ -32,6 +32,8 @@ export interface Session {
   sessionToken: string;
   userId: string;
   email: string;
+  /** Device id returned by SRP finish — required for sync cursors (ADR-006). */
+  deviceId: string;
   keys: KeyMaterial;
   unlockedAt: number;
 }

@@ -7,26 +7,44 @@
  */
 import { z } from "zod";
 import {
+  CreateShareLinkResponseSchema,
   CreateVaultResponseSchema,
   ItemResponseSchema,
   ItemVersionsResponseSchema,
   ListItemsResponseSchema,
+  ListMembersResponseSchema,
+  ListShareLinksResponseSchema,
   ListVaultsResponseSchema,
+  MemberResponseSchema,
+  OkResponseSchema,
   PostCursorResponseSchema,
+  RedeemShareLinkResponseSchema,
   SyncChangesResponseSchema,
+  UserLookupSchema,
+  type AddMemberInput,
   type CreateItemInput,
+  type CreateShareLinkInput,
+  type CreateShareLinkResponse,
   type CreateVaultInput,
   type CreateVaultResponse,
   type ItemResponse,
   type ItemVersionsResponse,
   type ListItemsParams,
   type ListItemsResponse,
+  type ListMembersResponse,
+  type ListShareLinksResponse,
   type ListVaultsResponse,
+  type MemberResponse,
+  type OkResponse,
+  type PatchMemberInput,
   type PostCursorInput,
   type PostCursorResponse,
+  type RedeemShareLinkResponse,
+  type SetWrappedKeyInput,
   type SyncChangesParams,
   type SyncChangesResponse,
   type UpdateItemInput,
+  type UserLookup,
 } from "./schemas.js";
 
 /** Error thrown by the API client for HTTP failures and response-shape failures. */
@@ -210,6 +228,100 @@ export function createApiClient(options: ApiClientOptions) {
     /** POST /v1/sync/cursor (body: {vaultId,lastVersion,deviceId}) -> {ok:true} */
     postCursor(input: PostCursorInput): Promise<PostCursorResponse> {
       return request("POST", "/v1/sync/cursor", PostCursorResponseSchema, input);
+    },
+
+    // ----------------------------------------------------------- Phase 4
+
+    /** PUT /v1/vaults/:id/wrapped-key — re-seal the caller's vault key. */
+    setWrappedKey(vaultId: string, input: SetWrappedKeyInput): Promise<OkResponse> {
+      return request(
+        "PUT",
+        `/v1/vaults/${encodeURIComponent(vaultId)}/wrapped-key`,
+        OkResponseSchema,
+        input,
+      );
+    },
+
+    /** GET /v1/vaults/:id/members -> {members:[VaultMember]} */
+    listMembers(vaultId: string): Promise<ListMembersResponse> {
+      return request(
+        "GET",
+        `/v1/vaults/${encodeURIComponent(vaultId)}/members`,
+        ListMembersResponseSchema,
+      );
+    },
+
+    /** POST /v1/vaults/:id/members (admin) -> {member:VaultMember} */
+    addMember(vaultId: string, input: AddMemberInput): Promise<MemberResponse> {
+      return request(
+        "POST",
+        `/v1/vaults/${encodeURIComponent(vaultId)}/members`,
+        MemberResponseSchema,
+        input,
+      );
+    },
+
+    /** PATCH /v1/vaults/:id/members/:userId (admin) -> {ok:true} */
+    patchMemberRole(
+      vaultId: string,
+      userId: string,
+      role: AddMemberInput["role"],
+    ): Promise<OkResponse> {
+      return request(
+        "PATCH",
+        `/v1/vaults/${encodeURIComponent(vaultId)}/members/${encodeURIComponent(userId)}`,
+        OkResponseSchema,
+        { role },
+      );
+    },
+
+    /** DELETE /v1/vaults/:id/members/:userId (admin or self) -> {ok:true} */
+    removeMember(vaultId: string, userId: string): Promise<OkResponse> {
+      return request(
+        "DELETE",
+        `/v1/vaults/${encodeURIComponent(vaultId)}/members/${encodeURIComponent(userId)}`,
+        OkResponseSchema,
+      );
+    },
+
+    /** GET /v1/users/lookup?email= -> {userId,email,masterPublicKey} */
+    lookupUser(email: string): Promise<UserLookup> {
+      return request(
+        "GET",
+        `/v1/users/lookup${buildQuery({ email })}`,
+        UserLookupSchema,
+      );
+    },
+
+    /** POST /v1/share-links -> {shareLink, token} (token returned ONCE). */
+    createShareLink(input: CreateShareLinkInput): Promise<CreateShareLinkResponse> {
+      return request("POST", "/v1/share-links", CreateShareLinkResponseSchema, input);
+    },
+
+    /** GET /v1/share-links -> creator's links (no tokens). */
+    listShareLinks(): Promise<ListShareLinksResponse> {
+      return request("GET", "/v1/share-links", ListShareLinksResponseSchema);
+    },
+
+    /** DELETE /v1/share-links/:id -> {ok:true} (revoke). */
+    revokeShareLink(id: string): Promise<OkResponse> {
+      return request(
+        "DELETE",
+        `/v1/share-links/${encodeURIComponent(id)}`,
+        OkResponseSchema,
+      );
+    },
+
+    /**
+     * POST /v1/public/share-links/:token (UNAUTHED; spends one view).
+     * Carries the token only — the server hashes it for lookup.
+     */
+    redeemShareLink(token: string): Promise<RedeemShareLinkResponse> {
+      return request(
+        "POST",
+        `/v1/public/share-links/${encodeURIComponent(token)}`,
+        RedeemShareLinkResponseSchema,
+      );
     },
   };
 }

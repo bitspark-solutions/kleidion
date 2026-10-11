@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { ready, nacl } from "../src/sodium";
 import { toHex, fromHex, timingSafeEqual } from "../src/encoding";
+import { generateX25519Keypair, keypairFromSeed } from "../src/keypair";
 import {
   derive2SKD, deriveAUK, deriveSrpX, generateSalt,
   KDF_INTERACTIVE, KDF_SENSITIVE,
@@ -198,5 +199,30 @@ describe("Vault key wrapping (sealed box / X25519)", () => {
     const ub = await unwrapVaultKey(wB, bob.publicKey, bob.privateKey);
     expect(timingSafeEqual(ua, vk)).toBe(true);
     expect(timingSafeEqual(ub, vk)).toBe(true);
+  });
+});
+
+describe("X25519 keypair (account master key)", () => {
+  it("generates a 32-byte seed and consistent keypair", async () => {
+    const kp = await generateX25519Keypair();
+    expect(kp.seed).toHaveLength(32);
+    expect(kp.publicKey).toHaveLength(32);
+    expect(kp.privateKey).toHaveLength(32);
+  });
+
+  it("re-derives the identical keypair from the stored seed", async () => {
+    const kp = await generateX25519Keypair();
+    const again = await keypairFromSeed(kp.seed);
+    expect(timingSafeEqual(again.publicKey, kp.publicKey)).toBe(true);
+    expect(timingSafeEqual(again.privateKey, kp.privateKey)).toBe(true);
+  });
+
+  it("sealed-box round-trips through the seed-derived keypair", async () => {
+    const kp = await generateX25519Keypair();
+    const derived = await keypairFromSeed(kp.seed);
+    const vk = await generateVaultKey();
+    const wrapped = await wrapVaultKey(vk, derived.publicKey);
+    const unwrapped = await unwrapVaultKey(wrapped, derived.publicKey, derived.privateKey);
+    expect(timingSafeEqual(unwrapped, vk)).toBe(true);
   });
 });

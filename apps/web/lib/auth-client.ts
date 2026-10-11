@@ -36,6 +36,8 @@ import {
   generateSalt,
   generateSecretKey,
   parseSecretKey,
+  generateX25519Keypair,
+  keypairFromSeed,
   KDF_SENSITIVE,
   timingSafeEqual,
   type KdfParams,
@@ -153,6 +155,7 @@ interface SrpFinishResponse {
   serverProof: string;
   userId: string;
   email: string;
+  deviceId: string;
   keyBundle: KeyBundleWire | null;
 }
 
@@ -192,12 +195,11 @@ export async function signup({ email, password }: SignupInput): Promise<SignupRe
   const verifierHex = deriveVerifier(xHex);
 
   // X25519 master keypair from a random seed + vault-independent sym key.
-  const seed = s.randombytes_buf(32);
-  const kp = s.crypto_box_seed_keypair(seed);
+  const kp = await generateX25519Keypair();
   const symKey = s.randombytes_buf(32);
 
   const auk = await deriveAUK(password, tmp.bytes, aukSalt, KDF_SENSITIVE);
-  const encryptedPrivateKey = await wrapWithAuk(seed, auk, aukSalt);
+  const encryptedPrivateKey = await wrapWithAuk(kp.seed, auk, aukSalt);
   const encryptedSymKey = await wrapWithAuk(symKey, auk);
 
   const resp = await fetchJson<EnrollResponse>("/v1/auth/enroll", {
@@ -220,7 +222,7 @@ export async function signup({ email, password }: SignupInput): Promise<SignupRe
   // Hygiene: wipe local copies of secrets we no longer need.
   auk.fill(0);
   symKey.fill(0);
-  seed.fill(0);
+  kp.seed.fill(0);
   kp.privateKey.fill(0);
   tmp.bytes.fill(0);
 
@@ -285,7 +287,7 @@ export async function signin({ email, password, secretKey, deviceName }: SigninI
   const auk = await deriveAUK(password, skBytes, aukSalt, start.kdf);
 
   const seed = await unwrapWithAuk(privBlob, auk, saltLen);
-  const kp = s.crypto_box_seed_keypair(seed);
+  const kp = await keypairFromSeed(seed);
   const symKey = await unwrapWithAuk(bytesFromB64(finish.keyBundle.encryptedSymKey), auk, 0);
 
   const keys: KeyMaterial = {
@@ -302,6 +304,7 @@ export async function signin({ email, password, secretKey, deviceName }: SigninI
     sessionToken: finish.sessionToken,
     userId: finish.userId,
     email: finish.email,
+    deviceId: finish.deviceId,
     keys,
     unlockedAt: Date.now(),
   });

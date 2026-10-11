@@ -85,6 +85,8 @@ export const VaultMetaSchema = z.object({
   encryptedMeta: base64Schema,
   nonce: base64Schema,
   role: RoleSchema,
+  /** Caller's sealed vault key (GET /v1/vaults only; Phase 4 ADR-006). */
+  wrappedVaultKey: base64Schema.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -141,6 +143,8 @@ export const CreateVaultInputSchema = z.object({
   kind: VaultKindSchema.optional(),
   encryptedMeta: base64Schema,
   nonce: base64Schema,
+  /** base64 sealed-box of the new vault key under the creator's pubkey. */
+  wrappedVaultKey: base64Schema.optional(),
 });
 export type CreateVaultInput = z.infer<typeof CreateVaultInputSchema>;
 
@@ -231,3 +235,142 @@ export type SyncChangesResponse = z.infer<typeof SyncChangesResponseSchema>;
 
 export const PostCursorResponseSchema = z.object({ ok: z.literal(true) });
 export type PostCursorResponse = z.infer<typeof PostCursorResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Phase 4 — per-vault keys, SRP finish, members, share links
+// Authoritative spec: .hermes/plans/phase4-contract.md
+// ---------------------------------------------------------------------------
+
+const HEX_RE = /^[0-9a-fA-F]*$/;
+
+/** Lower/upper hex string (X25519 keys are hex on the auth/lookup wire). */
+export const hexSchema = z
+  .string()
+  .regex(HEX_RE, "must be a hex string");
+
+/** Generic {"ok":true} ack used by several Phase 4 write routes. */
+export const OkResponseSchema = z.object({ ok: z.literal(true) });
+export type OkResponse = z.infer<typeof OkResponseSchema>;
+
+/**
+ * PUT /v1/vaults/:id/wrapped-key body — re-seal the CALLER's vault key
+ * (Phase 3 -> Phase 4 ADR-006 migration).
+ */
+export const SetWrappedKeyInputSchema = z.object({
+  wrappedVaultKey: base64Schema,
+});
+export type SetWrappedKeyInput = z.infer<typeof SetWrappedKeyInputSchema>;
+
+/** SRP finish key bundle (hex keys + base64 AUK-wrapped blobs). */
+export const KeyBundleWireSchema = z.object({
+  masterPublicKey: hexSchema,
+  encryptedPrivateKey: base64Schema,
+  encryptedSymKey: base64Schema,
+});
+export type KeyBundleWire = z.infer<typeof KeyBundleWireSchema>;
+
+/**
+ * POST /v1/auth/srp/finish response. `deviceId` closes the ADR-006 sync-cursor
+ * gap (Phase 4 Step A) — the client must persist and echo it on cursor posts.
+ */
+export const SrpFinishResponseSchema = z.object({
+  sessionToken: z.string(),
+  serverProof: z.string(),
+  userId: z.string(),
+  email: z.string(),
+  deviceId: z.string(),
+  keyBundle: KeyBundleWireSchema.nullable(),
+});
+export type SrpFinishResponse = z.infer<typeof SrpFinishResponseSchema>;
+
+/** A vault member (GET/POST /v1/vaults/:id/members). */
+export const VaultMemberSchema = z.object({
+  userId: z.string(),
+  email: z.string(),
+  role: RoleSchema,
+  createdAt: z.string(),
+});
+export type VaultMember = z.infer<typeof VaultMemberSchema>;
+
+/** GET /v1/users/lookup?email= — minimal public directory entry. */
+export const UserLookupSchema = z.object({
+  userId: z.string(),
+  email: z.string(),
+  /** hex X25519 public key — seal the vault key with this, client-side. */
+  masterPublicKey: hexSchema,
+});
+export type UserLookup = z.infer<typeof UserLookupSchema>;
+
+/** POST /v1/vaults/:id/members body. */
+export const AddMemberInputSchema = z.object({
+  email: z.string().min(1),
+  role: RoleSchema,
+  /** sealed-box (crypto_box_seal) of the vault key under the member pubkey. */
+  wrappedVaultKey: base64Schema,
+});
+export type AddMemberInput = z.infer<typeof AddMemberInputSchema>;
+
+/** PATCH /v1/vaults/:id/members/:userId body. */
+export const PatchMemberInputSchema = z.object({ role: RoleSchema });
+export type PatchMemberInput = z.infer<typeof PatchMemberInputSchema>;
+
+export const ListMembersResponseSchema = z.object({
+  members: z.array(VaultMemberSchema),
+});
+export type ListMembersResponse = z.infer<typeof ListMembersResponseSchema>;
+
+export const MemberResponseSchema = z.object({ member: VaultMemberSchema });
+export type MemberResponse = z.infer<typeof MemberResponseSchema>;
+
+/** ShareLink row as returned to its creator (never carries the token). */
+export const ShareLinkInfoSchema = z.object({
+  id: z.string(),
+  itemId: z.string(),
+  recipientEmail: z.string().nullable(),
+  viewOnly: z.boolean(),
+  expiresAt: z.string(),
+  maxViews: z.number().int().nonnegative().nullable(),
+  views: z.number().int().nonnegative(),
+  revokedAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type ShareLinkInfo = z.infer<typeof ShareLinkInfoSchema>;
+
+/** POST /v1/share-links body. */
+export const CreateShareLinkInputSchema = z.object({
+  itemId: z.string(),
+  /** item JSON re-encrypted with the ephemeral linkKey (base64). */
+  wrappedItem: base64Schema,
+  wrappedNonce: base64Schema,
+  recipientEmail: z.string().optional(),
+  viewOnly: z.boolean(),
+  expiresAt: z.string(),
+  maxViews: z.number().int().nonnegative().optional(),
+});
+export type CreateShareLinkInput = z.infer<typeof CreateShareLinkInputSchema>;
+
+/** Create response: the row + the once-only token. */
+export const CreateShareLinkResponseSchema = z.object({
+  shareLink: ShareLinkInfoSchema,
+  token: z.string(),
+});
+export type CreateShareLinkResponse = z.infer<
+  typeof CreateShareLinkResponseSchema
+>;
+
+export const ListShareLinksResponseSchema = z.object({
+  shareLinks: z.array(ShareLinkInfoSchema),
+});
+export type ListShareLinksResponse = z.infer<
+  typeof ListShareLinksResponseSchema
+>;
+
+/** POST /v1/public/share-links/:token (UNAUTHED) -> ciphertext, spends a view. */
+export const RedeemShareLinkResponseSchema = z.object({
+  wrappedItem: base64Schema,
+  wrappedNonce: base64Schema,
+  viewOnly: z.boolean(),
+});
+export type RedeemShareLinkResponse = z.infer<
+  typeof RedeemShareLinkResponseSchema
+>;

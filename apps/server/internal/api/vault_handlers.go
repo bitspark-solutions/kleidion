@@ -21,8 +21,11 @@ type vaultMetaWire struct {
 	EncryptedMeta string    `json:"encryptedMeta"`
 	Nonce         string    `json:"nonce"`
 	Role          string    `json:"role"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	// WrappedVaultKey is the CALLING user's sealed vault key (vault_keys row);
+	// populated on GET /v1/vaults so clients can unwrap per-vault keys (ADR-006).
+	WrappedVaultKey string    `json:"wrappedVaultKey,omitempty"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
 func toVaultWire(v store.Vault) vaultMetaWire {
@@ -49,6 +52,7 @@ func registerVaultRoutes(rg *gin.RouterGroup, st *store.Store) {
 	{
 		g.GET("", h.list)
 		g.POST("", h.create)
+		g.PUT("/:id/wrapped-key", h.setWrappedKey)
 	}
 }
 
@@ -62,7 +66,11 @@ func (h *vaultHandler) list(c *gin.Context) {
 	}
 	out := make([]vaultMetaWire, 0, len(vaults))
 	for _, v := range vaults {
-		out = append(out, toVaultWire(v))
+		w := toVaultWire(v)
+		if len(v.WrappedVaultKey) > 0 {
+			w.WrappedVaultKey = base64.StdEncoding.EncodeToString(v.WrappedVaultKey)
+		}
+		out = append(out, w)
 	}
 	c.JSON(http.StatusOK, gin.H{"vaults": out})
 }
@@ -115,6 +123,42 @@ func (h *vaultHandler) create(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"vault": toVaultWire(*v)})
+}
+
+// setWrappedKeyRequest is the PUT /v1/vaults/:id/wrapped-key body.
+type setWrappedKeyRequest struct {
+	WrappedVaultKey string `json:"wrappedVaultKey"`
+}
+
+// setWrappedKey replaces the caller's own vault_keys.wrapped_vault_key.
+// Used by the Phase 4 migration to re-wrap a Phase 3 account symKey under
+// the member's X25519 keypair. Server never sees the key in the clear.
+func (h *vaultHandler) setWrappedKey(c *gin.Context) {
+	vaultID, err := parseVaultIDParam(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	var req setWrappedKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	wrapped, err := decodeB64Field(req.WrappedVaultKey, "wrappedVaultKey", false, 0)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	userID := ctxUserID(c)
+	if err := h.st.SetOwnWrappedVaultKey(c.Request.Context(), vaultID, userID, wrapped); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			respondError(c, http.StatusBadRequest, "vaultId must be a vault you are a member of")
+			return
+		}
+		respondError(c, http.StatusInternalServerError, "failed to update vault key")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 // Sizes/lengths enforced by the contract.

@@ -55,8 +55,13 @@ func NewRouter(log zerolog.Logger, st *store.Store, cfg config.Config) *gin.Engi
 			// session auth (Bearer token → SHA-256 hash lookup).
 			authed := v1.Group("", RequireSession(st))
 			registerVaultRoutes(authed, st)
+			registerMemberRoutes(authed, st)
 			registerItemRoutes(authed, st)
 			registerSyncRoutes(authed, st)
+			registerShareRoutes(authed, st)
+			// Phase 4: unauthenticated visitor redeem (token in path,
+			// link key only ever in the URL fragment — never here).
+			registerPublicShareRoutes(v1, st)
 		}
 		v1.GET("/status", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{

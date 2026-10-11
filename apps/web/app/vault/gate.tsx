@@ -1,60 +1,52 @@
 "use client";
 
-// Client-side gate for /vault: mounts VaultProvider and shows the locked
-// placeholder when there is no vault key in context. The unlocked vault key +
-// session token are injected by the auth/session layer (apps/web/lib/session.ts,
-// owned by another agent). Until that integration exists, nothing provides a
-// key, so /vault renders the locked state with a link to /signin.
-//
-// INTEGRATION CONTRACT for the auth agent — either:
-//   1) render <VaultProvider vaultKey={key} sessionToken={token}> above this
-//      tree (e.g. in a client wrapper around the app), or
-//   2) swap the `useSessionKeyMaterial()` call below for an import from
-//      lib/session once that module lands.
+// Client-side gate for /vault: mounts VaultProvider with the unwrapped
+// account key material from the in-memory session and shows the locked
+// placeholder while no session exists. Phase 4 (ADR-006): the provider
+// derives per-vault keys by unwrapping each vault's sealed key; the gate no
+// longer passes a single vault key.
 
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { VaultProvider, useVault } from "@/lib/vault-context";
 import { useSession, requireSession, isUnlocked } from "@/lib/session";
 
-// KEY MODEL — Phase 3 decision (documented deviation from the contract):
-//   The contract (§3) specifies a per-vault random key wrapped with each
-//   member's X25519 public key, which is what makes *shared* vaults possible.
-//   The Phase 3 UI threads a SINGLE symmetric key through context
-//   (VaultProvider vaultKey=...) and uses it to decrypt vault metadata and
-//   item ciphertexts. Phase 3 ships personal vaults only (one member), so we
-//   bridge by passing the account-wide `symKey` from the unlocked session.
-//   Coherent end-to-end, all crypto stays in @kleidion/crypto.
-//
-//   TODO(Phase 4 — shared vaults): replace the single-key context with a
-//   per-vault key map. On unlock, fetch vault_keys rows, unwrap each
-//   wrapped_vault_key with crypto_box_seal_open, expose { [vaultId]: key },
-//   and select by vaultId in item ops. The server already has the vault_keys
-//   table plus role checks.
-
 /**
  * Pull unlocked key material from the in-memory session store.
- * Returns null key/token while locked so the gate renders the locked screen.
+ * Returns nulls while locked so the gate renders the locked screen.
  */
 function useSessionKeyMaterial(): {
-  vaultKey: Uint8Array | null;
   sessionToken: string | null;
+  userId: string | null;
+  deviceId: string | null;
+  symKey: Uint8Array | null;
+  privateKey: Uint8Array | null;
   masterPublicKey: Uint8Array | null;
 } {
   // Subscribe so lock/unlock (incl. the 15-min idle auto-lock) re-renders.
   useSession();
-  if (!isUnlocked()) return { vaultKey: null, sessionToken: null, masterPublicKey: null };
+  const none = {
+    sessionToken: null,
+    userId: null,
+    deviceId: null,
+    symKey: null,
+    privateKey: null,
+    masterPublicKey: null,
+  };
+  if (!isUnlocked()) return none;
   try {
     // requireSession() throws when locked; guarded above, but stay defensive.
     const s = requireSession();
     return {
-      vaultKey: s.keys.symKey,
       sessionToken: s.sessionToken,
-      // Needed by POST /v1/vaults to seal the vault key into vault_keys.
+      userId: s.userId,
+      deviceId: s.deviceId,
+      symKey: s.keys.symKey,
+      privateKey: s.keys.privateKey,
       masterPublicKey: s.keys.masterPublicKey,
     };
   } catch {
-    return { vaultKey: null, sessionToken: null, masterPublicKey: null };
+    return none;
   }
 }
 
@@ -83,15 +75,22 @@ function LockedPlaceholder() {
 }
 
 function VaultGateInner({ children }: { children: ReactNode }) {
-  const { vaultKey, sessionToken } = useVault();
-  if (!vaultKey || !sessionToken) return <LockedPlaceholder />;
+  const { sessionToken } = useVault();
+  if (!sessionToken) return <LockedPlaceholder />;
   return <>{children}</>;
 }
 
 export function VaultGate({ children }: { children: ReactNode }) {
-  const { vaultKey, sessionToken, masterPublicKey } = useSessionKeyMaterial();
+  const { sessionToken, userId, deviceId, symKey, privateKey, masterPublicKey } = useSessionKeyMaterial();
   return (
-    <VaultProvider vaultKey={vaultKey} sessionToken={sessionToken} masterPublicKey={masterPublicKey}>
+    <VaultProvider
+      sessionToken={sessionToken}
+      userId={userId}
+      deviceId={deviceId}
+      symKey={symKey}
+      privateKey={privateKey}
+      masterPublicKey={masterPublicKey}
+    >
       <VaultGateInner>{children}</VaultGateInner>
     </VaultProvider>
   );

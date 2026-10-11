@@ -216,3 +216,92 @@ describe("createApiClient — error handling", () => {
     expect((err as ApiError).message).toContain("response validation failed");
   });
 });
+
+const member = {
+  userId: "user-2",
+  email: "b@example.com",
+  role: "write",
+  createdAt: "2026-01-01T00:00:00Z",
+};
+
+const shareLink = {
+  id: "link-1",
+  itemId: "item-1",
+  recipientEmail: null,
+  viewOnly: true,
+  expiresAt: "2026-02-01T00:00:00Z",
+  maxViews: null,
+  views: 0,
+  revokedAt: null,
+  createdAt: "2026-01-01T00:00:00Z",
+};
+
+describe("createApiClient — Phase 4 members / share links / wrapped key", () => {
+  it("setWrappedKey PUTs to the per-vault wrapped-key route", async () => {
+    const { fn, calls } = mockFetch(() => json(200, { ok: true }));
+    const res = await client(fn).setWrappedKey("vault-1", { wrappedVaultKey: CIPHERTEXT });
+    expect(res.ok).toBe(true);
+    expect(calls[0]!.method).toBe("PUT");
+    expect(calls[0]!.url).toBe("http://api.test/v1/vaults/vault-1/wrapped-key");
+    expect(calls[0]!.body).toEqual({ wrappedVaultKey: CIPHERTEXT });
+  });
+
+  it("listMembers / addMember / patchMemberRole / removeMember", async () => {
+    const { fn, calls } = mockFetch((call) => {
+      if (call.method === "POST") return json(201, { member });
+      if (call.method === "PATCH" || call.method === "DELETE") return json(200, { ok: true });
+      return json(200, { members: [member] });
+    });
+    const c = client(fn);
+    expect((await c.listMembers("vault-1")).members[0]!.userId).toBe("user-2");
+    expect((await c.addMember("vault-1", { email: "b@example.com", role: "write", wrappedVaultKey: CIPHERTEXT })).member.role).toBe("write");
+    expect((await c.patchMemberRole("vault-1", "user-2", "read")).ok).toBe(true);
+    expect((await c.removeMember("vault-1", "user-2")).ok).toBe(true);
+    expect(calls.map((x) => x.method)).toEqual(["GET", "POST", "PATCH", "DELETE"]);
+  });
+
+  it("lookupUser GETs the email directory", async () => {
+    const { fn, calls } = mockFetch(() =>
+      json(200, { userId: "user-2", email: "b@example.com", masterPublicKey: "aabbcc" }),
+    );
+    const res = await client(fn).lookupUser("b@example.com");
+    expect(res.masterPublicKey).toBe("aabbcc");
+    expect(new URL(calls[0]!.url).searchParams.get("email")).toBe("b@example.com");
+  });
+
+  it("lookupUser rejects a non-hex masterPublicKey", async () => {
+    const { fn } = mockFetch(() =>
+      json(200, { userId: "u", email: "b@example.com", masterPublicKey: "zzz!" }),
+    );
+    const err = await client(fn).lookupUser("b@example.com").catch((e: unknown) => e);
+    expect((err as ApiError).status).toBe(0);
+  });
+
+  it("createShareLink returns the once-only token", async () => {
+    const { fn } = mockFetch(() => json(201, { shareLink, token: "tok-abc" }));
+    const res = await client(fn).createShareLink({
+      itemId: "item-1",
+      wrappedItem: CIPHERTEXT,
+      wrappedNonce: NONCE24,
+      viewOnly: true,
+      expiresAt: "2026-02-01T00:00:00Z",
+    });
+    expect(res.token).toBe("tok-abc");
+    expect(res.shareLink.id).toBe("link-1");
+  });
+
+  it("listShareLinks / revokeShareLink / redeemShareLink", async () => {
+    const { fn, calls } = mockFetch((call) => {
+      if (call.url.endsWith("/v1/share-links")) return json(200, { shareLinks: [shareLink] });
+      if (call.method === "DELETE") return json(200, { ok: true });
+      return json(200, { wrappedItem: CIPHERTEXT, wrappedNonce: NONCE24, viewOnly: true });
+    });
+    const c = client(fn);
+    expect((await c.listShareLinks()).shareLinks[0]!.id).toBe("link-1");
+    expect((await c.revokeShareLink("link-1")).ok).toBe(true);
+    const redeemed = await c.redeemShareLink("tok-abc");
+    expect(redeemed.viewOnly).toBe(true);
+    expect(calls[2]!.url).toBe("http://api.test/v1/public/share-links/tok-abc");
+    expect(calls[2]!.method).toBe("POST");
+  });
+});

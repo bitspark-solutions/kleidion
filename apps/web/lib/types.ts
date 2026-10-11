@@ -18,6 +18,11 @@ export interface VaultMeta {
   /** base64 24-byte nonce. */
   nonce: string;
   role: VaultRole;
+  /**
+   * base64 sealed-box of this vault key under the caller's X25519 public key.
+   * Returned by GET /v1/vaults (Phase 4 / ADR-006 per-vault key model).
+   */
+  wrappedVaultKey?: string;
   createdAt: string;
   updatedAt: string;
 }

@@ -5,6 +5,7 @@
 // toggle, edit / trash actions, and the version history list.
 
 import { useCallback, useEffect, useState } from "react";
+import { parseOtpauthUri, totp } from "@kleidion/crypto";
 import {
   ITEM_TYPE_LABELS,
   type Item,
@@ -16,6 +17,7 @@ import {
   AUTO_CLEAR_SECONDS,
   useAutoClearCopy,
 } from "@/lib/use-auto-clear-copy";
+import ShareDialog from "./ShareDialog";
 
 export interface ItemDetailProps {
   item: Item | null;
@@ -30,6 +32,119 @@ export interface ItemDetailProps {
   onEdit: () => void;
   onTrash: () => void;
   onClose: () => void;
+}
+
+interface TotpState {
+  code: string;
+  secondsRemaining: number;
+  period: number;
+}
+
+/** Live RFC 6238 codes for a `totp` field (otpauth URI or bare base32 seed). */
+function TotpRow({
+  field,
+  canCopy,
+  copy,
+  remaining,
+  pendingValue,
+}: {
+  field: ItemField;
+  canCopy: boolean;
+  copy: (v: string) => Promise<void>;
+  remaining: number | null;
+  pendingValue: string | null;
+}) {
+  const [state, setState] = useState<TotpState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showSeed, setShowSeed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const value = field.value.trim();
+    const isUri = value.toLowerCase().startsWith("otpauth://");
+    (async () => {
+      try {
+        const params = isUri
+          ? parseOtpauthUri(value)
+          : { secret: value, digits: 6, period: 30, algorithm: "sha1" as const };
+        const res = await totp(params.secret, {
+          digits: params.digits,
+          period: params.period,
+          algorithm: params.algorithm,
+        });
+        if (cancelled) return;
+        setState(res);
+        setError(null);
+        timer = setTimeout(
+          () => void (async () => {
+            try {
+              const next = await totp(params.secret, {
+                digits: params.digits,
+                period: params.period,
+                algorithm: params.algorithm,
+              });
+              if (!cancelled) setState(next);
+            } catch {
+              if (!cancelled) setError("Invalid TOTP secret");
+            }
+          })(),
+          res.secondsRemaining * 1000 + 50,
+        );
+      } catch {
+        if (!cancelled) setError("Invalid TOTP secret or otpauth URI");
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [field.value]);
+
+  const display = state
+    ? `${state.code.slice(0, Math.floor(state.code.length / 2))} ${state.code.slice(Math.floor(state.code.length / 2))}`
+    : error ?? "…";
+  const codePending = state !== null && pendingValue === state.code;
+
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-border py-2">
+      <div className="min-w-0">
+        <p className="text-xs text-fg-muted">
+          {field.label}
+          {state && (
+            <span className="ml-2 tabular-nums text-fg-muted">
+              {state.secondsRemaining}s
+            </span>
+          )}
+        </p>
+        {showSeed ? (
+          <p className="block truncate font-mono text-xs text-fg-muted">{field.value}</p>
+        ) : (
+          <p className="font-mono text-xl tracking-widest text-fg" aria-live="polite">
+            {display}
+          </p>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        <button
+          type="button"
+          onClick={() => setShowSeed((v) => !v)}
+          aria-pressed={showSeed}
+          aria-label={showSeed ? "Hide secret" : "Show secret"}
+          className="rounded-md border border-border px-2 py-1 text-xs text-fg-muted hover:bg-surface-hover hover:text-fg"
+        >
+          {showSeed ? "Hide" : "Secret"}
+        </button>
+        {canCopy && state && (
+          <CopyButton
+            label="Copy code"
+            onClick={() => copy(state.code)}
+            remaining={codePending ? remaining : null}
+          />
+        )}
+      </div>
+    </div>
+  );
 }
 
 function FieldRow({
@@ -48,6 +163,10 @@ function FieldRow({
   const secret = field.type === "password" || field.type === "totp";
   const [revealed, setRevealed] = useState(false);
   const isPending = pendingValue === field.value;
+
+  if (field.type === "totp") {
+    return <TotpRow field={field} canCopy={canCopy} copy={copy} remaining={remaining} pendingValue={pendingValue} />;
+  }
 
   if (field.type === "url") {
     return (
@@ -152,6 +271,7 @@ export default function ItemDetail({
   onClose,
 }: ItemDetailProps) {
   const { copy, remaining, pendingValue } = useAutoClearCopy();
+  const [sharing, setSharing] = useState(false);
 
   // Reset per-item UI state when the selection changes.
   useEffect(() => {
@@ -294,6 +414,16 @@ export default function ItemDetail({
       </div>
 
       <footer className="flex items-center gap-2 border-t border-border p-4">
+        {plain && !item.deletedAt && (
+          <button
+            type="button"
+            onClick={() => setSharing(true)}
+            disabled={busy}
+            className="rounded-md border border-border px-3 py-1.5 text-sm text-fg hover:bg-surface-hover disabled:opacity-50"
+          >
+            Share
+          </button>
+        )}
         {canWrite && !item.deletedAt && (
           <>
             <button
@@ -322,6 +452,10 @@ export default function ItemDetail({
         )}
         {busy && <span className="text-xs text-fg-muted">Working…</span>}
       </footer>
+
+      {sharing && plain && (
+        <ShareDialog itemId={item.id} plain={plain} onClose={() => setSharing(false)} />
+      )}
     </aside>
   );
 }

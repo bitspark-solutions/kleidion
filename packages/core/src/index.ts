@@ -4,6 +4,7 @@
  * .hermes/plans/phase3-contract.md
  */
 export * from "./schemas.js";
+export * from "./domains.js";
 export {
   ApiError,
   ApiResponseError,

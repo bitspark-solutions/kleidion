@@ -4,12 +4,17 @@
   "private": true,
   "workspaces": [
     "apps/web",
+    "apps/extension",
     "packages/*"
   ],
   "scripts": {
     "web:dev": "npm run dev --workspace @kleidion/web",
     "web:build": "npm run build --workspace @kleidion/web",
     "web:typecheck": "npm run typecheck --workspace @kleidion/web",
-    "core:test": "npm run test --workspace @kleidion/core"
+    "core:test": "npm run test --workspace @kleidion/core",
+    "ext:dev": "npm run dev --workspace @kleidion/extension",
+    "ext:build": "npm run build --workspace @kleidion/extension",
+    "ext:build:firefox": "npm run build:firefox --workspace @kleidion/extension",
+    "ext:compile": "npm run compile --workspace @kleidion/extension"
   }
 }
