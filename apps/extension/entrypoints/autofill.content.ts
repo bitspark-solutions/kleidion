@@ -49,8 +49,11 @@ function setNativeValue(el: HTMLInputElement, value: string): void {
 
 let menuHost: HTMLElement | null = null;
 let shadow: ShadowRoot | null = null;
+/** Bumped by every menu open, so a stale blur timer cannot close a newer menu. */
+let menuSeq = 0;
 
 function ensureMenu(): { host: HTMLElement; root: ShadowRoot } {
+  menuSeq++;
   if (menuHost && shadow) return { host: menuHost, root: shadow };
   menuHost = document.createElement("div");
   menuHost.id = "kleidion-autofill";
@@ -161,6 +164,7 @@ async function generateInto(el: HTMLInputElement): Promise<void> {
 // ---------------------------------------------------------- save capture
 
 async function offerSave(form: HTMLFormElement, username: string, password: string): Promise<void> {
+  closeMenu(); // a field menu may still be open; the prompt replaces it
   const { root } = ensureMenu();
   const box = document.createElement("div");
   box.className = "menu";
@@ -271,11 +275,20 @@ function main(): void {
           }
         };
         el.addEventListener("keydown", onKeydown, { once: false });
+        // Blur may race a newer menu: moving focus straight to another
+        // credential field (e.g. right after a fill) opens that field's menu
+        // before this timer fires, so only close our own generation.
+        const generation = menuSeq;
         el.addEventListener(
           "blur",
           () => {
             el.removeEventListener("keydown", onKeydown);
-            setTimeout(closeMenu, 120); // allow menu mousedown
+            setTimeout(() => {
+              if (generation !== menuSeq) return;
+              const next = document.activeElement;
+              if (next instanceof HTMLInputElement && isCredentialField(next)) return;
+              closeMenu(); // allow menu mousedown
+            }, 120);
           },
           { once: true },
         );

@@ -35,7 +35,10 @@ export default function App() {
       .then(([tab]) => {
         setTabId(tab?.id ?? null);
         try {
-          setHost(tab?.url ? new URL(tab.url).hostname : "");
+          // Only web tabs drive the site panel; a chrome:// or extension page
+          // would otherwise render a meaningless "Logins for <id>" heading.
+          const u = tab?.url ? new URL(tab.url) : null;
+          setHost(u && (u.protocol === "http:" || u.protocol === "https:") ? u.hostname : "");
         } catch {
           setHost("");
         }

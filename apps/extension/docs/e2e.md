@@ -14,7 +14,9 @@ Load unpacked:
 - Chrome: `chrome://extensions` → Developer mode → "Load unpacked" → `.output/chrome-mv3`
 - Firefox: `about:debugging#/runtime/this-firefox` → "Load Temporary Add-on" → `.output/firefox-mv2/manifest.json`
 
-Requirements: server API reachable at `http://localhost:18080` (override with `VITE_API_BASE` at build time).
+Requirements: server API reachable at `http://localhost:18080` (override with `VITE_API_BASE` at build time,
+e.g. `VITE_API_BASE=http://localhost:18081 npm run ext:build` — the host API port is chosen by
+`scripts/gen-env.sh` and changes between boots, so check `.env`).
 
 ## Firefox caveats
 
@@ -25,6 +27,32 @@ Requirements: server API reachable at `http://localhost:18080` (override with `V
   back to module-memory only. It is cleared on browser restart and never written to disk
   (strictly weaker guarantee than Chrome; documented trade-off).
 - Install-time data-consent: manifest declares `data_collection_permissions.required=["none"]`.
+
+## Automated Chrome E2E
+
+`.shots/ext-e2e.js` (gitignored scratch harness, puppeteer-core) drives the extension in a real
+Chrome window against the live stack: it seeds an account + vault + two logins through the web app,
+signs the extension in over SRP, then asserts autofill, quick-generate, save-on-submit, TOTP and
+lock. Last run 2026-10-14: **30/30 green**. It caught two real content-script bugs (a stale blur
+timer closing a newer menu, and the save prompt being torn down by the field menu it replaced).
+
+Harness constraints worth knowing before you rewrite it:
+
+- **Branded Chrome ignores `--load-extension`.** Use a Chrome-for-Testing build
+  (`~/.cache/puppeteer/chrome/…`). The MV3 service worker also never appears in CDP
+  `Target.getTargets`, so the extension id is derived the way Chromium derives it for unpacked
+  loads: SHA-256 over the **UTF-16LE absolute path**, first 32 hex nibbles mapped `0-f → a-p`.
+- **`chrome://` pages reject `page.evaluate`** (it returns empty), so `chrome://extensions` can
+  only be inspected by screenshot or coordinate clicks.
+- **The autofill menu lives in a closed shadow root**, so its rows are unreachable from page JS.
+  Locate them with a piercing CDP DOM walk (`DOM.getDocument` with `pierce: true`) and click with
+  real mouse events.
+- Opening `popup.html` as a tab is fine for sign-in/list/TOTP/lock, but `sender.tab` is then set,
+  so the background's origin guard refuses `credentials` — which is exactly how the guard is
+  asserted. The real toolbar popup has no `sender.tab`.
+
+Still manual only: autofill against the real `mail.google.com` DOM, comparing a code with
+Google Authenticator on a phone, and clicking the toolbar icon to confirm the badge.
 
 ## E2E script (exit criteria)
 
