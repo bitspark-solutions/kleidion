@@ -8,6 +8,7 @@ import type {
   BackgroundRequest,
   BackgroundResponse,
   CredentialsData,
+  GeneratedData,
   MatchEntry,
   StatusData,
   VaultOption,
@@ -76,14 +77,19 @@ function closeMenu(): void {
   shadow = null;
 }
 
-function openMenu(anchor: HTMLElement, entries: MatchEntry[], pick: (e: MatchEntry) => void): void {
+function openMenu(
+  anchor: HTMLElement,
+  entries: MatchEntry[],
+  pick: (e: MatchEntry) => void,
+  generate?: () => void,
+): void {
   closeMenu();
   const { root } = ensureMenu();
   const box = document.createElement("div");
   box.className = "menu";
   const rect = anchor.getBoundingClientRect();
   box.style.left = `${Math.max(4, Math.min(rect.left, innerWidth - 350))}px`;
-  box.style.top = `${Math.max(4, rect.top - 8 - entries.length * 42)}px`;
+  box.style.top = `${Math.max(4, rect.top - 8 - (entries.length + (generate ? 1 : 0)) * 42)}px`;
   if (entries.length === 0) {
     box.innerHTML = '<div class="empty">No saved logins here</div>';
   } else {
@@ -103,6 +109,22 @@ function openMenu(anchor: HTMLElement, entries: MatchEntry[], pick: (e: MatchEnt
       box.append(row);
     }
   }
+  if (generate) {
+    const row = document.createElement("div");
+    row.className = "item";
+    const name = document.createElement("div");
+    name.textContent = "Generate strong password";
+    name.style.color = "oklch(0.72 0.15 165)";
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent = "20 chars";
+    row.append(name, sub);
+    row.addEventListener("mousedown", (ev) => {
+      ev.preventDefault();
+      generate();
+    });
+    box.append(row);
+  }
   root.appendChild(box);
 }
 
@@ -120,6 +142,18 @@ async function fillWith(entry: MatchEntry, anchor: HTMLInputElement): Promise<vo
     (passEl ?? userEl ?? anchor).focus();
   } catch {
     /* background rejects non-matching origins; ignore silently */
+  }
+  closeMenu();
+}
+
+// ---------------------------------------------------------------- generating
+
+async function generateInto(el: HTMLInputElement): Promise<void> {
+  try {
+    const { password } = await send<GeneratedData>({ type: "generate" });
+    setNativeValue(el, password);
+  } catch {
+    /* background unavailable */
   }
   closeMenu();
 }
@@ -213,7 +247,13 @@ function main(): void {
         const el = e.target;
         if (!(el instanceof HTMLInputElement) || !isCredentialField(el)) return;
         let active = 0;
-        openMenu(el, entries, (entry) => void fillWith(entry, el));
+        const canGenerate = el.type === "password" && el.value === "";
+        openMenu(
+          el,
+          entries,
+          (entry) => void fillWith(entry, el),
+          canGenerate ? () => void generateInto(el) : undefined,
+        );
         const onKeydown = (ev: KeyboardEvent) => {
           if (ev.key === "Escape") {
             closeMenu();

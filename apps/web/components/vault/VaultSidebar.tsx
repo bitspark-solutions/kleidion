@@ -13,6 +13,7 @@ export type VaultCategory =
   | "cards"
   | "identities"
   | "favorites"
+  | "security"
   | "trash";
 
 export interface SidebarVault {
@@ -43,6 +44,7 @@ const CATEGORIES: { key: VaultCategory; label: string; glyph: string }[] = [
   { key: "cards", label: "Cards", glyph: "💳" },
   { key: "identities", label: "Identities", glyph: "🪪" },
   { key: "favorites", label: "Favorites", glyph: "★" },
+  { key: "security", label: "Security", glyph: "🛡" },
   { key: "trash", label: "Trash", glyph: "🗑" },
 ];
 

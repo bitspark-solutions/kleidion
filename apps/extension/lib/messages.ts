@@ -20,6 +20,12 @@ export type BackgroundRequest =
       password: string;
       hostname: string;
     }
+  | {
+      type: "generate";
+      mode?: "password" | "passphrase";
+      length?: number;
+      words?: number;
+    }
   | { type: "vaults" };
 
 export type BackgroundResponse =
@@ -57,4 +63,9 @@ export interface VaultOption {
   name: string;
   role: "admin" | "write" | "read";
   canWrite: boolean;
+}
+
+/** Response of the "generate" request — a freshly generated secret, client-side only. */
+export interface GeneratedData {
+  password: string;
 }

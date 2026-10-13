@@ -4,7 +4,12 @@
  * scripts never hold keys; they ask the worker for exactly what a matched
  * origin needs, per the Phase 4 contract.
  */
-import { parseOtpauthUri, totp } from "@kleidion/crypto";
+import {
+  generatePassphrase,
+  generatePassword,
+  parseOtpauthUri,
+  totp,
+} from "@kleidion/crypto";
 import { setApiToken } from "../lib/api";
 import { signin } from "../lib/auth";
 import type {
@@ -141,6 +146,29 @@ async function handle(
       const entry = idx.entries.find((e) => e.itemId === req.itemId);
       if (!entry?.totpValue) throw new Error("No TOTP secret for this item");
       return computeTotp(entry.totpValue);
+    }
+    case "generate": {
+      // Pure client-side CSPRNG work; no session or vault access needed.
+      if (req.mode === "passphrase") {
+        return {
+          password: await generatePassphrase({
+            words: req.words ?? 6,
+            separator: "-",
+            capitalize: true,
+            includeNumber: false,
+          }),
+        };
+      }
+      return {
+        password: await generatePassword({
+          length: req.length ?? 20,
+          upper: true,
+          lower: true,
+          digits: true,
+          symbols: true,
+          excludeAmbiguous: false,
+        }),
+      };
     }
     case "save": {
       return saveLogin(requireSession(), {

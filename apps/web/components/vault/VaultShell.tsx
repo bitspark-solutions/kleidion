@@ -44,6 +44,8 @@ import ItemList from "./ItemList";
 import ItemDetail from "./ItemDetail";
 import ItemEditor from "./ItemEditor";
 import MembersDialog from "./MembersDialog";
+import SecurityView from "./SecurityView";
+import { generateDefaultPassword } from "./PasswordGenerator";
 
 function parsePlain(json: string): ItemPlain {
   const p = JSON.parse(json) as ItemPlain;
@@ -86,6 +88,8 @@ export default function VaultShell() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showMembers, setShowMembers] = useState(false);
+  const [pendingSelectId, setPendingSelectId] = useState<string | null>(null);
+  const [auditNonce, setAuditNonce] = useState(0);
   // Responsive pane control (mobile shows one pane at a time).
   const [mobilePane, setMobilePane] = useState<"list" | "detail">("list");
 
@@ -152,6 +156,15 @@ export default function VaultShell() {
     setMobilePane("list");
     loadItems(selectedVaultId).catch(() => undefined);
   }, [selectedVaultId, sessionToken, loadItems]);
+
+  // Security view "Open": select the target item once its vault has loaded.
+  useEffect(() => {
+    if (pendingSelectId && items.some((it) => it.id === pendingSelectId)) {
+      setSelectedId(pendingSelectId);
+      setPendingSelectId(null);
+      if (window.innerWidth < 768) setMobilePane("detail");
+    }
+  }, [pendingSelectId, items]);
 
   // ------------------------------------------------------------ decryption
 
@@ -337,6 +350,7 @@ export default function VaultShell() {
         setPlainMap((m) => ({ ...m, [saved.id]: plain }));
         setEditor(null);
         setSelectedId(saved.id);
+        setAuditNonce((n) => n + 1);
         if (window.innerWidth < 768) setMobilePane("detail");
       } catch (err) {
         setSaveError(err instanceof Error ? err.message : "Save failed");
@@ -380,6 +394,7 @@ export default function VaultShell() {
         const res = await deleteItem(item.id);
         applyItems([res.item]);
         setCategory("trash");
+        setAuditNonce((n) => n + 1);
       } catch (err) {
         setActionError(err instanceof Error ? err.message : "Failed to trash item");
       } finally {
@@ -432,6 +447,36 @@ export default function VaultShell() {
     if (window.innerWidth < 768) setMobilePane("detail");
   }, []);
 
+  const openSecurityItem = useCallback(
+    (vaultId: string, itemId: string) => {
+      setCategory("all");
+      setMobilePane("list");
+      if (vaultId !== selectedVaultId) setSelectedVaultId(vaultId);
+      setPendingSelectId(itemId);
+    },
+    [selectedVaultId],
+  );
+
+  const regenerateSecurityItem = useCallback(
+    (item: Item, plain: ItemPlain) => {
+      setSaveError(null);
+      if (item.vaultId !== selectedVaultId) setSelectedVaultId(item.vaultId);
+      void generateDefaultPassword().then((v) => {
+        setEditor({
+          mode: "edit",
+          item,
+          plain: {
+            ...plain,
+            fields: (plain.fields ?? []).map((f) =>
+              f.type === "password" ? { ...f, value: v } : f,
+            ),
+          },
+        });
+      });
+    },
+    [selectedVaultId],
+  );
+
   const errorBanner = vaultsError ?? itemsError ?? actionError;
 
   return (
@@ -460,6 +505,18 @@ export default function VaultShell() {
           />
         </div>
 
+        {category === "security" ? (
+          <div className="min-w-0 flex-1">
+            <SecurityView
+              vaults={sidebarVaults}
+              getVaultKey={getVaultKey}
+              refreshNonce={auditNonce}
+              onOpen={openSecurityItem}
+              onRegenerate={regenerateSecurityItem}
+            />
+          </div>
+        ) : (
+          <>
         {/* Item list */}
         <div
           className={`min-w-0 flex-1 md:max-w-sm md:shrink-0 md:flex-none md:w-80 ${
@@ -528,6 +585,8 @@ export default function VaultShell() {
             onClose={closeDetail}
           />
         </div>
+          </>
+        )}
       </div>
 
       {showMembers && selectedVault && vaultKey && userId && (

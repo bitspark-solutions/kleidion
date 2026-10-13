@@ -218,6 +218,73 @@ describe("entropy", () => {
   });
 });
 
+describe("randomness quality (contract A.1: chi-square light + no-bias)", () => {
+  it("digits-only pool is uniform: chi-square < 27.88 (df=9, p~0.001)", async () => {
+    const n = 20000; // 2000 chars x length 10
+    const pw = await generatePassword(
+      recipe({ length: 10, upper: false, lower: false, symbols: false }),
+    );
+    expect(pw).toMatch(/^[0-9]+$/);
+    const counts = new Array<number>(10).fill(0);
+    for (let i = 0; i < 2000; i++) {
+      const s = await generatePassword(
+        recipe({ length: 10, upper: false, lower: false, symbols: false }),
+      );
+      for (const ch of s) counts[Number(ch)]++;
+    }
+    const expected = n / 10;
+    let chi2 = 0;
+    for (const c of counts) chi2 += ((c - expected) ** 2) / expected;
+    expect(chi2).toBeLessThan(27.88);
+  });
+
+  it("guaranteed-class characters are shuffled: P(first char is a digit) ~ 1/3", async () => {
+    // lower(26) + digits(10): one guaranteed of each, 6 filled from the pool.
+    // Expected P = (1 + 6*10/36) / 8 = 0.3333.
+    const trials = 5000;
+    let digitFirst = 0;
+    for (let i = 0; i < trials; i++) {
+      const s = await generatePassword(
+        recipe({ length: 8, upper: false, symbols: false }),
+      );
+      if (/[0-9]/.test(s[0])) digitFirst++;
+    }
+    const p = digitFirst / trials;
+    // sigma ~ sqrt(0.333*0.667/5000) = 0.0067 -> 0.05 margin is >7 sigma
+    expect(Math.abs(p - 1 / 3)).toBeLessThan(0.05);
+  });
+
+  it("passphrase draws cover the wordlist (3000 single-word draws -> >=850 unique)", async () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 3000; i++) {
+      const s = await generatePassphrase({
+        words: 1,
+        separator: "-",
+        capitalize: false,
+        includeNumber: false,
+      });
+      expect(WORDLIST).toContain(s);
+      seen.add(s);
+    }
+    // Uniform expectation ~967 unique; 850 is a safe lower bound.
+    expect(seen.size).toBeGreaterThanOrEqual(850);
+  });
+
+  it("no positional clustering of symbols (each position has >=1 symbol in 500x len-12)", async () => {
+    const length = 12;
+    const hits = new Array<number>(length).fill(0);
+    for (let i = 0; i < 500; i++) {
+      const s = await generatePassword(recipe({ length }));
+      for (let pos = 0; pos < length; pos++) {
+        if (/[^A-Za-z0-9]/.test(s[pos])) hits[pos]++;
+      }
+    }
+    // Symbols are ~32/94 of the pool; over 500 samples every position should
+    // occasionally receive one. Any zero would betray a shuffle failure.
+    for (const h of hits) expect(h).toBeGreaterThan(0);
+  });
+});
+
 describe("never uses Math.random", () => {
   const original = Math.random;
 

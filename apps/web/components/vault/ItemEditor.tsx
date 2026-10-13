@@ -5,7 +5,7 @@
 // Encryption happens in VaultShell (it owns the vault key); this component
 // only collects and validates the plaintext.
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   ITEM_TYPES,
   ITEM_TYPE_LABELS,
@@ -13,6 +13,7 @@ import {
   type ItemFieldType,
   type ItemPlain,
 } from "@/lib/types";
+import PasswordGenerator, { generateDefaultPassword } from "./PasswordGenerator";
 
 export interface ItemEditorProps {
   /** Existing plaintext when editing; null when creating. */
@@ -88,6 +89,18 @@ export default function ItemEditor({
     initial?.fields ?? fieldsFromTemplate(initialItemType),
   );
   const [titleError, setTitleError] = useState<string | null>(null);
+  const [genField, setGenField] = useState<number | null>(null);
+  const prefilled = useRef(false);
+
+  // New Login items open with a generated 20-char password (Phase 5 contract A.2).
+  useEffect(() => {
+    if (initial !== null || itemType !== ITEM_TYPES.Login || prefilled.current) return;
+    const idx = fields.findIndex((f) => f.type === "password" && f.value === "");
+    if (idx === -1) return;
+    prefilled.current = true;
+    void generateDefaultPassword().then((v) => updateField(idx, { value: v }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function changeType(next: number) {
     setItemType(next);
@@ -183,21 +196,57 @@ export default function ItemEditor({
             <fieldset>
               <legend className="mb-1 text-xs text-fg-muted">Fields</legend>
               <div className="space-y-2">
-                {fields.map((f, i) => (
-                  <div key={`${f.label}-${i}`} className="flex items-center gap-2">
-                    <span className="w-24 shrink-0 truncate text-xs text-fg-muted">
-                      {f.label}
-                    </span>
-                    <input
-                      type={f.type === "password" ? "password" : f.type === "url" ? "url" : "text"}
-                      value={f.value}
-                      onChange={(e) => updateField(i, { value: e.target.value })}
-                      placeholder={f.type === "totp" ? "otpauth://… or secret" : f.label}
-                      className={inputCls}
-                      autoComplete="off"
-                    />
-                  </div>
-                ))}
+                {fields.map((f, i) => {
+                  const generatable = itemType === ITEM_TYPES.Login && f.type === "password";
+                  return (
+                    <div key={`${f.label}-${i}`}>
+                      <div className="flex items-center gap-2">
+                        <span className="w-24 shrink-0 truncate text-xs text-fg-muted">
+                          {f.label}
+                        </span>
+                        <input
+                          type={f.type === "password" ? "password" : f.type === "url" ? "url" : "text"}
+                          value={f.value}
+                          onChange={(e) => updateField(i, { value: e.target.value })}
+                          placeholder={f.type === "totp" ? "otpauth://… or secret" : f.label}
+                          className={inputCls}
+                          autoComplete="off"
+                        />
+                        {generatable && (
+                          <span className="flex shrink-0 gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setGenField(genField === i ? null : i)}
+                              aria-pressed={genField === i}
+                              aria-label="Generate password"
+                              className={`rounded-md border px-2 py-1 text-xs ${
+                                genField === i
+                                  ? "border-accent text-accent"
+                                  : "border-border text-fg-muted hover:bg-surface-hover hover:text-fg"
+                              }`}
+                            >
+                              Generate
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void navigator.clipboard?.writeText(f.value)}
+                              disabled={!f.value}
+                              aria-label="Copy password"
+                              className="rounded-md border border-border px-2 py-1 text-xs text-fg-muted hover:bg-surface-hover hover:text-fg disabled:opacity-40"
+                            >
+                              Copy
+                            </button>
+                          </span>
+                        )}
+                      </div>
+                      {generatable && genField === i && (
+                        <div className="ml-[6.5rem] mt-1.5">
+                          <PasswordGenerator onGenerate={({ value }) => updateField(i, { value })} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </fieldset>
           )}

@@ -8,6 +8,7 @@ import { errMsg, send } from "./send";
 import SignInForm from "./SignInForm";
 import SitePanel from "./SitePanel";
 import AllItems from "./AllItems";
+import GeneratorPanel from "./GeneratorPanel";
 
 export default function App() {
   const [status, setStatus] = useState<StatusData | null>(null);
@@ -83,6 +84,7 @@ export default function App() {
       ) : (
         <main className="max-h-[480px] overflow-y-auto">
           {host && <SitePanel host={host} tabId={tabId} />}
+          <GeneratorPanel />
           <AllItems />
         </main>
       )}

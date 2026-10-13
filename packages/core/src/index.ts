@@ -5,6 +5,7 @@
  */
 export * from "./schemas.js";
 export * from "./domains.js";
+export * from "./audit.js";
 export {
   ApiError,
   ApiResponseError,
