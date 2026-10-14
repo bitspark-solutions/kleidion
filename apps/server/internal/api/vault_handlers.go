@@ -16,11 +16,11 @@ import (
 // vaultMetaWire is the VaultMeta JSON shape from the Phase 3 contract
 // (camelCase; binary fields base64).
 type vaultMetaWire struct {
-	ID            string    `json:"id"`
-	Kind          string    `json:"kind"`
-	EncryptedMeta string    `json:"encryptedMeta"`
-	Nonce         string    `json:"nonce"`
-	Role          string    `json:"role"`
+	ID            string `json:"id"`
+	Kind          string `json:"kind"`
+	EncryptedMeta string `json:"encryptedMeta"`
+	Nonce         string `json:"nonce"`
+	Role          string `json:"role"`
 	// WrappedVaultKey is the CALLING user's sealed vault key (vault_keys row);
 	// populated on GET /v1/vaults so clients can unwrap per-vault keys (ADR-006).
 	WrappedVaultKey string    `json:"wrappedVaultKey,omitempty"`

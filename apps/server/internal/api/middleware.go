@@ -54,6 +54,9 @@ func RequireSession(st *store.Store) gin.HandlerFunc {
 		c.Set(CtxUserID, sess.UserID)
 		c.Set(CtxSessionID, sess.ID)
 		c.Set(CtxDeviceID, sess.DeviceID)
+		// Best-effort "last used" bump (throttled inside the store to once a
+		// minute). Metadata only — a failure here must never break auth.
+		_ = st.TouchSession(c.Request.Context(), sess.ID)
 		c.Next()
 	}
 }

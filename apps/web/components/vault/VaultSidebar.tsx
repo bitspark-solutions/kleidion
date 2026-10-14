@@ -4,6 +4,7 @@
 // with live counts. Purely presentational; VaultShell owns all state.
 
 import { useState, type FormEvent } from "react";
+import Link from "next/link";
 import { ITEM_TYPES, type VaultRole } from "@/lib/types";
 
 export type VaultCategory =
@@ -205,6 +206,22 @@ export default function VaultSidebar({
               </li>
             );
           })}
+        </ul>
+      </section>
+
+      <section>
+        <ul className="space-y-0.5">
+          <li>
+            <Link
+              href="/vault/settings"
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
+            >
+              <span aria-hidden className="w-5 text-center">
+                ⚙️
+              </span>
+              <span className="flex-1 truncate">Settings</span>
+            </Link>
+          </li>
         </ul>
       </section>
 
