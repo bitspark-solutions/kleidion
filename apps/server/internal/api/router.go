@@ -49,11 +49,13 @@ func NewRouter(log zerolog.Logger, st *store.Store, cfg config.Config) *gin.Engi
 		// Enrollment + SRP-6a sign-in. The SRP package is cross-verified
 		// against the TS client via golden vectors (packages/crypto/test/vectors).
 		if st != nil {
-			registerAuthRoutes(v1, auth.NewService(st), log)
+			svc := auth.NewService(st)
+			registerAuthRoutes(v1, svc, st, log)
 
 			// Phase 3: vaults, items, and delta sync. All routes behind
 			// session auth (Bearer token → SHA-256 hash lookup).
 			authed := v1.Group("", RequireSession(st))
+			registerSessionRoutes(authed, svc, log)
 			registerVaultRoutes(authed, st)
 			registerMemberRoutes(authed, st)
 			registerItemRoutes(authed, st)

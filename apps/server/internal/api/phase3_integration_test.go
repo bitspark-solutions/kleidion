@@ -134,7 +134,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	}
 	token := base64.RawURLEncoding.EncodeToString(tokenBytes)
 	sum := sha256.Sum256([]byte(token))
-	if _, err := st.CreateSession(ctx, u.ID, deviceID, sum[:], 24*time.Hour); err != nil {
+	if _, err := st.CreateSession(ctx, u.ID, deviceID, sum[:], 24*time.Hour, "go-test"); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 
@@ -579,7 +579,7 @@ func TestIntegrationReadRoleForbidden(t *testing.T) {
 	_, _ = rand.Read(rt)
 	readerToken := base64.RawURLEncoding.EncodeToString(rt)
 	rsum := sha256.Sum256([]byte(readerToken))
-	if _, err := e.st.CreateSession(context.Background(), reader.ID, readerDev, rsum[:], time.Hour); err != nil {
+	if _, err := e.st.CreateSession(context.Background(), reader.ID, readerDev, rsum[:], time.Hour, "go-test"); err != nil {
 		t.Fatalf("reader session: %v", err)
 	}
 

@@ -248,6 +248,10 @@ type SrpFinishRequest struct {
 	ClientProof    string `json:"clientProof"` // hex, M1
 	DeviceName     string `json:"deviceName"`
 	DevicePlatform string `json:"devicePlatform"`
+	// UserAgent is captured by the handler from the request header (never
+	// client-declared JSON) and stored as session metadata for the Active
+	// sessions UI. Request-derived only — no vault secret, ZK-safe.
+	UserAgent string `json:"-"`
 }
 
 // SrpFinishResponse returns the session token + server proof + (on success for
@@ -312,7 +316,7 @@ func (s *Service) SrpFinish(ctx context.Context, req *SrpFinishRequest) (*SrpFin
 	if err != nil {
 		return nil, fmt.Errorf("upsert device: %w", err)
 	}
-	if _, err := s.store.CreateSession(ctx, *chal.UserID, deviceID, tokenHash, SessionTTL); err != nil {
+	if _, err := s.store.CreateSession(ctx, *chal.UserID, deviceID, tokenHash, SessionTTL, truncate(req.UserAgent, 512)); err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
 	}
 
@@ -348,7 +352,80 @@ var (
 	ErrInvalidChallenge = errors.New("auth: challenge invalid, used, or expired")
 	ErrInvalidProof     = errors.New("auth: client proof invalid")
 	ErrAccountDisabled  = errors.New("auth: account disabled")
+	// ErrSessionNotFound is returned when a session id does not exist, is
+	// already revoked, or belongs to another user. Handlers answer a uniform
+	// 404 so this never becomes an enumeration oracle over session ids.
+	ErrSessionNotFound = errors.New("auth: session not found")
 )
+
+// Logout revokes the session resolved from the caller's bearer token. After it
+// returns, the session token fails authentication immediately (the middleware
+// lookup excludes revoked rows).
+func (s *Service) Logout(ctx context.Context, sessionID uuid.UUID) error {
+	return s.store.RevokeSession(ctx, sessionID)
+}
+
+// SessionInfo is the wire shape for the Active-sessions list: device
+// identity + request-derived metadata only. Never any secret material.
+type SessionInfo struct {
+	ID             string `json:"id"`
+	DeviceID       string `json:"deviceId"`
+	DeviceName     string `json:"deviceName"`
+	DevicePlatform string `json:"devicePlatform"`
+	UserAgent      string `json:"userAgent"`
+	CreatedAt      string `json:"createdAt"`
+	LastUsedAt     string `json:"lastUsedAt"`
+	ExpiresAt      string `json:"expiresAt"`
+	// Current marks the session the caller is authenticating with right now.
+	Current bool `json:"current"`
+}
+
+// ListSessions returns the user's live sessions, newest first, marking the
+// caller's current session.
+func (s *Service) ListSessions(ctx context.Context, userID, currentSessionID uuid.UUID) ([]SessionInfo, error) {
+	rows, err := s.store.ListActiveSessions(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]SessionInfo, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, SessionInfo{
+			ID:             r.SessionID.String(),
+			DeviceID:       r.DeviceID.String(),
+			DeviceName:     r.DeviceName,
+			DevicePlatform: r.DevicePlatform,
+			UserAgent:      r.UserAgent,
+			CreatedAt:      r.CreatedAt.UTC().Format(time.RFC3339),
+			LastUsedAt:     r.LastUsedAt.UTC().Format(time.RFC3339),
+			ExpiresAt:      r.ExpiresAt.UTC().Format(time.RFC3339),
+			Current:        r.SessionID == currentSessionID,
+		})
+	}
+	return out, nil
+}
+
+// RevokeSessionForUser revokes one of the user's own sessions (device
+// management). Returns ErrSessionNotFound for unknown/already-revoked/other-
+// user ids.
+func (s *Service) RevokeSessionForUser(ctx context.Context, sessionID, userID uuid.UUID) error {
+	ok, err := s.store.RevokeSessionForUser(ctx, sessionID, userID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrSessionNotFound
+	}
+	return nil
+}
+
+// truncate caps a free-form client string (e.g. a User-Agent header) so a
+// hostile client cannot bloat a row.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
+}
 
 // newSessionToken returns (plaintextToken, sha256(token)). Only the hash is stored.
 func newSessionToken() (string, []byte, error) {

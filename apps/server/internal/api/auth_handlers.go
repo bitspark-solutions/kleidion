@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 
 	"github.com/kleidion/server/internal/auth"
@@ -23,14 +24,18 @@ type authHandler struct {
 }
 
 // registerAuthRoutes mounts the enrollment + SRP sign-in endpoints.
-func registerAuthRoutes(v1 *gin.RouterGroup, svc *auth.Service, log zerolog.Logger) {
+// st is needed to build the RequireSession middleware for /logout.
+func registerAuthRoutes(v1 *gin.RouterGroup, svc *auth.Service, st *store.Store, log zerolog.Logger) {
 	h := &authHandler{svc: svc, log: log}
 	a := v1.Group("/auth")
 	{
 		a.POST("/enroll", h.enroll)
 		a.POST("/srp/start", h.srpStart)
 		a.POST("/srp/finish", h.srpFinish)
-		a.POST("/logout", h.logout)
+		// Logout is session-authenticated: the bearer token identifies WHICH
+		// session to revoke, and RequireSession makes the token unusable after
+		// the revoke lands (revoked rows fail the middleware lookup).
+		a.POST("/logout", RequireSession(st), h.logout)
 	}
 }
 
@@ -86,6 +91,9 @@ func (h *authHandler) srpFinish(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	// Server-captured UA for the session list (client-declared fields are not
+	// trusted for this).
+	req.UserAgent = c.Request.UserAgent()
 	resp, err := h.svc.SrpFinish(c.Request.Context(), &req)
 	if err != nil {
 		switch {
@@ -109,14 +117,34 @@ func (h *authHandler) srpFinish(c *gin.Context) {
 
 // logout revokes the caller's session.
 func (h *authHandler) logout(c *gin.Context) {
-	// Session resolution middleware sets the session id on the context.
-	idVal, ok := c.Get(ctxSessionID)
-	if !ok {
+	// RequireSession resolved the bearer token and set the session id on the
+	// context. Revoking the row makes the token fail the middleware lookup
+	// immediately (revoked sessions are excluded from the token-hash query).
+	sessID, err := sessionIDFromContext(c)
+	if err != nil {
+		// Unreachable while RequireSession is mounted; fail closed anyway.
 		respondError(c, http.StatusUnauthorized, "not authenticated")
 		return
 	}
-	_ = idVal
+	if err := h.svc.Logout(c.Request.Context(), sessID); err != nil {
+		h.log.Error().Err(err).Msg("logout revoke failed")
+		respondError(c, http.StatusInternalServerError, "logout failed")
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// sessionIDFromContext reads the uuid session id the middleware stored.
+func sessionIDFromContext(c *gin.Context) (uuid.UUID, error) {
+	v, ok := c.Get(ctxSessionID)
+	if !ok {
+		return uuid.Nil, errors.New("no session on context")
+	}
+	id, ok := v.(uuid.UUID)
+	if !ok || id == uuid.Nil {
+		return uuid.Nil, errors.New("bad session id on context")
+	}
+	return id, nil
 }
 
 // respondError writes a uniform JSON error body.
