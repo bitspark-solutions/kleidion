@@ -292,3 +292,40 @@ export function redeemShareLink(
     { method: "POST" },
   );
 }
+
+// ---------------------------------------------------------------- sessions
+
+/**
+ * Live session from GET /v1/sessions — device identity + request-derived
+ * metadata (User-Agent, created/last-used). Never any secret material; the
+ * server only ever stored the SHA-256 of the token.
+ */
+export interface SessionInfo {
+  id: string;
+  deviceId: string;
+  deviceName: string;
+  devicePlatform: string;
+  userAgent: string;
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  /** True for the session this request is authenticated with. */
+  current: boolean;
+}
+
+export function listSessions(): Promise<{ sessions: SessionInfo[] }> {
+  return request<{ sessions: SessionInfo[] }>("/v1/sessions");
+}
+
+/** Revoke one of the caller's sessions (kills that device's token). */
+export function revokeSession(id: string): Promise<{ status: "ok" }> {
+  return request<{ status: "ok" }>(`/v1/sessions/${id}`, { method: "DELETE" });
+}
+
+/**
+ * Real logout: revokes the CURRENT session server-side. The bearer token
+ * stops working immediately (no more 30-day zombie sessions).
+ */
+export function logout(): Promise<{ status: "ok" }> {
+  return request<{ status: "ok" }>("/v1/auth/logout", { method: "POST" });
+}
