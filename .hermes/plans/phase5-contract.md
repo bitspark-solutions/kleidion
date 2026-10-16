@@ -68,7 +68,10 @@ daily-drivable), and desktop/mobile become 5c/5d.
    untouched (no server changes in A/B).
 5. Screenshot walkthrough (`.shots/` flow script) of generate → audit → fix.
 
-## Deferred decisions (write ADR-008 when picked up)
+## Deferred decisions (write ADR-009 when picked up)
+
+(ADR-008 was spent on vault-key rotation on member removal, the hardening item
+that came due first.)
 
 - Desktop keychain: DPAPI vs age-encrypted file for the AUK cache; whether the Tauri
   shell reuses `apps/web` unchanged (likely) or shares a new `packages/ui`.

@@ -7,9 +7,16 @@ production-grade security with open source (AGPL) code.
 
 ## Status
 
-Phase 1 (infrastructure). See the [master plan](.hermes/plans/2026-10-03_1405-kleidion-master-plan.md)
-for the full roadmap: auth/SRP crypto core → vaults & sync → browser extension → desktop (Tauri) &
-mobile (Expo) → security-health audit/passkeys/travel masking → CLI & teams.
+Phases 1–5b are shipped: the containerized stack, SRP-6a auth + client crypto,
+vaults / items / delta-sync, the web vault, shared vaults + share links + TOTP +
+the MV3 extension, and the password generator with a client-side security-health
+page. Vault keys rotate when a member is removed (ADR-008).
+
+Not built yet: desktop (Tauri) and mobile (Expo) shells, passkeys, HIBP breach
+checks, travel masking, account recovery, CLI and teams — and no external
+security audit has run. See the
+[master plan](.hermes/plans/2026-10-03_1405-kleidion-master-plan.md) and the
+phase contracts in `.hermes/plans/`.
 
 ## Monorepo
 

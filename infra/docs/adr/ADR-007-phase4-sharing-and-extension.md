@@ -60,11 +60,10 @@ server-side against the authenticated redeemer.
 
 ## Consequences
 
-- Member removal does **not** rotate the vault key yet: the removed member keeps
-  a copy of the old key and any ciphertext they already synced. Rotation on
-  removal (re-encrypt vault key, re-wrap for remaining members, re-encrypt items
-  server-side is NOT needed — items stay under the rotated key only after a
-  client-driven re-encryption pass) is the top item for a future hardening pass.
+- Member removal did **not** rotate the vault key when this ADR was written, and
+  that was a real hole: the removed member kept a key that still decrypted
+  everything on the server. ADR-008 closes it — removal from the members UI is
+  now an atomic revoke-and-rotate (`POST /v1/vaults/:id/rotate-key`).
 - `users/lookup` leaks account existence by email to any authenticated user —
   acceptable for a personal/small-team product; a rate limit + eventual invite-code
   flow is the mitigation if abused.

@@ -2,9 +2,12 @@
 
 ## Status
 
-Kleidion is in **Phase 1 (infrastructure)**. The auth/crypto core (Phase 2) has NOT been
-implemented yet, and the project has NOT been audited. **Do not store real secrets in a
-Kleidion deployment yet.**
+The auth and crypto core is implemented and tested — SRP-6a cross-verified
+against golden vectors, 2SKD/Argon2id key derivation, XChaCha20-Poly1305 item
+encryption, per-vault keys, and atomic key rotation on member removal (ADR-008).
+
+It has **not** been through an external security audit. Treat this as pre-1.0
+software: **do not store real secrets in a Kleidion deployment yet.**
 
 ## Zero-knowledge invariant
 
