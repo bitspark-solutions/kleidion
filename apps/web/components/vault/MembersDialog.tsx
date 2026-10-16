@@ -3,6 +3,13 @@
 // MembersDialog — Phase 4 Step D. Sharing a vault = wrapping its key with
 // each member's X25519 public key (sealed box, client-side) and uploading the
 // opaque result. The server enforces roles but can never read the vault key.
+//
+// REMOVAL is a different operation (ADR-008): deleting the member's wrap only
+// stops future access to the key, it does not undo that they can decrypt every
+// row they already synced. So removing a member also rotates the vault key —
+// this device re-encrypts the whole vault under a fresh key and re-seals it for
+// the survivors, in one request. If that rotation fails, the member is NOT
+// removed: a half-done revocation looks like a fix and isn't one.
 
 import { useCallback, useEffect, useState } from "react";
 import { fromHex, ready, toBase64, wrapVaultKey } from "@kleidion/crypto";
@@ -14,7 +21,8 @@ import {
   removeMember,
   type VaultMemberInfo,
 } from "@/lib/vault-api";
-import type { VaultRole } from "@/lib/types";
+import { rotateVault } from "@/lib/vault-rotation";
+import type { Item, ItemPlain, VaultRole } from "@/lib/types";
 
 const ROLES: VaultRole[] = ["admin", "write", "read"];
 
@@ -23,12 +31,25 @@ export default function MembersDialog({
   vaultKey,
   selfUserId,
   selfRole,
+  items,
+  plains,
+  encryptedMeta,
+  metaNonce,
+  onRotated,
   onClose,
 }: {
   vaultId: string;
   vaultKey: Uint8Array;
   selfUserId: string;
   selfRole: VaultRole;
+  /** Every row of this vault (tombstones included) — needed to re-encrypt. */
+  items: Item[];
+  /** Decrypted plaintext per item id; a null blocks rotation. */
+  plains: Record<string, ItemPlain | null>;
+  encryptedMeta: string;
+  metaNonce: string;
+  /** Called after a successful rotation so the parent reloads keys + rows. */
+  onRotated: () => Promise<void>;
   onClose: () => void;
 }) {
   const isAdmin = selfRole === "admin";
@@ -39,6 +60,10 @@ export default function MembersDialog({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<VaultRole>("write");
   const [busy, setBusy] = useState(false);
+  // Member awaiting confirmation for revoke+rotate. Removal is destructive to
+  // the whole vault's ciphertext, so it gets an explicit second step.
+  const [pendingRevoke, setPendingRevoke] = useState<VaultMemberInfo | null>(null);
+  const [rotated, setRotated] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -60,6 +85,12 @@ export default function MembersDialog({
   const invite = useCallback(async () => {
     const trimmed = email.trim().toLowerCase();
     if (!trimmed || busy) return;
+    if (rotated) {
+      // vaultKey here is the retired key; sealing it for a new member would
+      // hand them something that decrypts nothing.
+      setError("The vault key was rotated in this dialog. Close and reopen it to invite.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -78,7 +109,47 @@ export default function MembersDialog({
     } finally {
       setBusy(false);
     }
-  }, [email, role, vaultKey, vaultId, busy, reload]);
+  }, [email, role, vaultKey, vaultId, busy, rotated, reload]);
+
+  // Admin removing someone: revoke their access AND retire the vault key they
+  // still hold, in one atomic request. A failed rotation must leave the roster
+  // untouched — see the file header.
+  const revokeAndRotate = useCallback(
+    async (target: VaultMemberInfo) => {
+      if (busy) return;
+      if (rotated) {
+        setError("The vault key was already rotated in this dialog. Close and reopen it to make further changes.");
+        return;
+      }
+      setBusy(true);
+      setError(null);
+      try {
+        const remaining = members
+          .filter((m) => m.userId !== target.userId)
+          .map((m) => ({ userId: m.userId, masterPublicKey: m.masterPublicKey }));
+        await rotateVault({
+          vaultId,
+          currentKey: vaultKey,
+          items,
+          plains,
+          encryptedMeta,
+          metaNonce,
+          remainingMembers: remaining,
+          revokedUserId: target.userId,
+        });
+        setPendingRevoke(null);
+        setRotated(true);
+        await onRotated();
+        await reload();
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : "the vault key could not be rotated";
+        setError(`${detail} ${target.email} was NOT removed.`);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [busy, rotated, members, vaultId, vaultKey, items, plains, encryptedMeta, metaNonce, onRotated, reload],
+  );
 
   return (
     <div
@@ -151,27 +222,89 @@ export default function MembersDialog({
                 ) : (
                   <span className="text-xs uppercase tracking-wide text-fg-muted">{m.role}</span>
                 )}
-                {(isAdmin || m.userId === selfUserId) && (
+                {m.userId === selfUserId ? (
                   <button
                     type="button"
+                    disabled={busy}
                     onClick={async () => {
+                      // Leaving is deliberately NOT a rotation: the member who
+                      // leaves already holds the key and cannot retire it for
+                      // the others. Whoever stays should rotate the vault key.
+                      setBusy(true);
                       try {
                         await removeMember(vaultId, m.userId);
-                        if (m.userId === selfUserId) onClose();
-                        else await reload();
+                        onClose();
                       } catch (err) {
-                        setError(err instanceof Error ? err.message : "Removal failed");
+                        setError(err instanceof Error ? err.message : "Could not leave this vault");
+                      } finally {
+                        setBusy(false);
                       }
                     }}
                     className="rounded-md border border-border px-2 py-1 text-xs text-fg-muted hover:border-danger hover:text-danger"
                   >
-                    {m.userId === selfUserId ? "Leave" : "Remove"}
+                    Leave
                   </button>
-                )}
+                ) : isAdmin ? (
+                  <button
+                    type="button"
+                    disabled={busy || rotated}
+                    onClick={() => {
+                      setError(null);
+                      setPendingRevoke(m);
+                    }}
+                    className="rounded-md border border-border px-2 py-1 text-xs text-fg-muted hover:border-danger hover:text-danger disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                ) : null}
               </span>
             </li>
           ))}
         </ul>
+
+        {pendingRevoke && (
+          <div
+            role="alertdialog"
+            aria-label="Confirm removal"
+            className="mt-4 rounded-lg border border-danger/60 bg-surface p-4"
+          >
+            <p className="text-sm font-semibold text-fg">
+              Remove {pendingRevoke.email} and rotate the vault key?
+            </p>
+            <p className="mt-1 text-xs leading-relaxed text-fg-muted">
+              Their access alone would not revoke the key they already hold, so this
+              device re-encrypts all {items.length} row(s) of this vault under a new
+              key and re-seals it for the {members.length - 1} remaining member(s).
+              Password history for this vault is cleared as part of that. Nothing is
+              sent in the clear, and this cannot be undone.
+            </p>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void revokeAndRotate(pendingRevoke)}
+                className="rounded-md bg-danger px-3 py-1.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {busy ? "Rotating…" : "Remove and rotate"}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setPendingRevoke(null)}
+                className="rounded-md border border-border px-3 py-1.5 text-sm text-fg-muted hover:text-fg"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {rotated && (
+          <p className="mt-3 rounded-md border border-border bg-surface px-3 py-2 text-xs text-fg-muted">
+            Vault key rotated. This dialog still holds the retired key, so close and
+            reopen it before inviting anyone.
+          </p>
+        )}
 
         {isAdmin && (
           <form
@@ -207,7 +340,7 @@ export default function MembersDialog({
             </label>
             <button
               type="submit"
-              disabled={busy || !email.trim()}
+              disabled={busy || !email.trim() || rotated}
               className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg hover:opacity-90 disabled:opacity-50"
             >
               {busy ? "…" : "Invite"}

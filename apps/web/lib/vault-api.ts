@@ -124,11 +124,11 @@ export interface ItemWriteInput {
 
 export function listItems(
   params: ListItemsParams,
-): Promise<{ items: Item[]; serverVersion: number }> {
+): Promise<{ items: Item[]; serverVersion: number; keyEpoch: number }> {
   const qs = new URLSearchParams({ vaultId: params.vaultId });
   if (params.since !== undefined) qs.set("since", String(params.since));
   if (params.searchHmac) qs.set("searchHmac", params.searchHmac);
-  return request<{ items: Item[]; serverVersion: number }>(
+  return request<{ items: Item[]; serverVersion: number; keyEpoch: number }>(
     `/v1/items?${qs.toString()}`,
   );
 }
@@ -198,6 +198,12 @@ export interface VaultMemberInfo {
   email: string;
   role: "admin" | "write" | "read";
   createdAt: string;
+  /**
+   * hex X25519 public key. An admin needs it to seal a ROTATED vault key for
+   * this member (ADR-008); it is the same value /v1/users/lookup already gives
+   * members.
+   */
+  masterPublicKey: string;
 }
 
 export interface UserLookup {
@@ -240,6 +246,50 @@ export function removeMember(vaultId: string, userId: string): Promise<{ ok: tru
   return request<{ ok: true }>(`/v1/vaults/${vaultId}/members/${userId}`, {
     method: "DELETE",
   });
+}
+
+// ------------------------------------------------- vault key rotation (ADR-008)
+
+export interface RotateItemInput {
+  /** Existing item row id. */
+  id: string;
+  itemType: number;
+  /** base64 ciphertext under the NEW vault key. */
+  ciphertext: string;
+  /** base64 24-byte nonce. */
+  nonce: string;
+  /** base64 search HMAC computed with the NEW key. */
+  searchHmac?: string | null;
+  favorite: boolean;
+}
+
+export interface RotateMemberInput {
+  userId: string;
+  /** base64 sealed box of the NEW vault key under this member's public key. */
+  wrappedVaultKey: string;
+}
+
+/**
+ * POST /v1/vaults/:id/rotate-key — atomically retire a vault key.
+ *
+ * The server refuses unless `items` covers EVERY row of the vault (tombstones
+ * included) and `members` covers exactly the surviving roster, so a rotation
+ * can never leave a row decryptable with the retired key.
+ */
+export function rotateVaultKey(
+  vaultId: string,
+  input: {
+    revokedUserId?: string;
+    encryptedMeta: string;
+    nonce: string;
+    members: RotateMemberInput[];
+    items: RotateItemInput[];
+  },
+): Promise<{ vault: VaultMeta; serverVersion: number; keyEpoch: number }> {
+  return request<{ vault: VaultMeta; serverVersion: number; keyEpoch: number }>(
+    `/v1/vaults/${vaultId}/rotate-key`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
 }
 
 // ------------------------------------------------------------- share links

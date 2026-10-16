@@ -87,6 +87,12 @@ export const VaultMetaSchema = z.object({
   role: RoleSchema,
   /** Caller's sealed vault key (GET /v1/vaults only; Phase 4 ADR-006). */
   wrappedVaultKey: base64Schema.optional(),
+  /**
+   * Rotation counter (ADR-008). A client holding a key from an older epoch must
+   * re-unwrap: every row on the server was rewritten under a new key. Optional
+   * so a pre-000006 server still validates.
+   */
+  keyEpoch: z.number().int().positive().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -209,6 +215,8 @@ export type CreateVaultResponse = z.infer<typeof CreateVaultResponseSchema>;
 export const ListItemsResponseSchema = z.object({
   items: z.array(ItemSchema),
   serverVersion: VersionSchema,
+  /** Vault rotation counter; see VaultMetaSchema.keyEpoch (ADR-008). */
+  keyEpoch: z.number().int().positive().optional(),
 });
 export type ListItemsResponse = z.infer<typeof ListItemsResponseSchema>;
 
@@ -230,6 +238,8 @@ export const SyncChangesResponseSchema = z.object({
   changes: z.array(ItemSchema),
   latestVersion: VersionSchema,
   hasMore: z.boolean(),
+  /** Vault rotation counter; a change means the cached vault key is stale. */
+  keyEpoch: z.number().int().positive().optional(),
 });
 export type SyncChangesResponse = z.infer<typeof SyncChangesResponseSchema>;
 

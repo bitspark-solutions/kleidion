@@ -99,6 +99,14 @@ export default function VaultShell() {
   );
   const canWrite = selectedVault ? selectedVault.role !== "read" : false;
 
+  // Key epoch per vault as last seen from GET /v1/vaults. The item feed reports
+  // it too, which is how a rotation performed on another device is detected
+  // without an extra vaults round trip (ADR-008).
+  const vaultEpochs = useRef<Record<string, number>>({});
+  useEffect(() => {
+    for (const v of vaults) vaultEpochs.current[v.id] = v.keyEpoch ?? 1;
+  }, [vaults]);
+
   // Phase 4 (ADR-006): one unsealed key per vault, selected by current vault.
   const vaultKey = selectedVaultId ? getVaultKey(selectedVaultId) : null;
 
@@ -123,6 +131,17 @@ export default function VaultShell() {
       try {
         const res = await listItems({ vaultId });
         setItems(res.items);
+        // Epochs disagree => someone rotated this vault's key (ADR-008) and our
+        // sealed copy is retired, so every row we just pulled would fail to
+        // decrypt. Re-fetch the vault list to get the new wrap; the key-change
+        // effect below clears the stale decrypt caches.
+        if (
+          res.keyEpoch !== undefined &&
+          vaultEpochs.current[vaultId] !== undefined &&
+          res.keyEpoch !== vaultEpochs.current[vaultId]
+        ) {
+          await refreshVaults();
+        }
         // Persist the cursor under the real device id (ADR-006 gap fix).
         if (deviceId) {
           postCursor({
@@ -137,7 +156,7 @@ export default function VaultShell() {
         setItemsLoading(false);
       }
     },
-    [deviceId],
+    [deviceId, refreshVaults],
   );
 
   // Auto-select the first vault once loaded.
@@ -174,6 +193,19 @@ export default function VaultShell() {
   const errCache = useRef(new Map<string, string>());
   const [plainMap, setPlainMap] = useState<Record<string, ItemPlain | null>>({});
   const [decryptErrors, setDecryptErrors] = useState<Record<string, string>>({});
+
+  // After a vault-key rotation (ADR-008) every row carries new ciphertext
+  // under the same item ids. Drop the caches whenever the key's identity
+  // changes — otherwise a failure recorded while the retired key was still
+  // loaded would be replayed forever and the vault would look corrupt.
+  const keyedOnRef = useRef<Uint8Array | null>(null);
+  useEffect(() => {
+    if (keyedOnRef.current !== vaultKey) {
+      keyedOnRef.current = vaultKey;
+      plainCache.current = new Map();
+      errCache.current = new Map();
+    }
+  }, [vaultKey]);
 
   useEffect(() => {
     if (!vaultKey) {
@@ -595,6 +627,16 @@ export default function VaultShell() {
           vaultKey={vaultKey}
           selfUserId={userId}
           selfRole={selectedVault.role}
+          items={items}
+          plains={plainMap}
+          encryptedMeta={selectedVault.encryptedMeta}
+          metaNonce={selectedVault.nonce}
+          onRotated={async () => {
+            // Pull the rewritten rows and the new sealed key; the decrypt
+            // caches reset with the key so nothing stale is reused.
+            await refreshVaults();
+            if (selectedVaultId) await loadItems(selectedVaultId);
+          }}
           onClose={() => {
             setShowMembers(false);
             refreshVaults().catch(() => undefined);

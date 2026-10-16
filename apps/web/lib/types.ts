@@ -23,6 +23,12 @@ export interface VaultMeta {
    * Returned by GET /v1/vaults (Phase 4 / ADR-006 per-vault key model).
    */
   wrappedVaultKey?: string;
+  /**
+   * Rotation counter (ADR-008). A client whose vault key came from an older
+   * epoch must re-unwrap before decrypting: every row on the server was
+   * rewritten under a new key.
+   */
+  keyEpoch?: number;
   createdAt: string;
   updatedAt: string;
 }

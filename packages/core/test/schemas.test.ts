@@ -136,6 +136,14 @@ describe("VaultMetaSchema", () => {
     expect(VaultMetaSchema.safeParse({ ...validVault, kind: "team" }).success).toBe(false);
     expect(VaultMetaSchema.safeParse({ ...validVault, role: "owner" }).success).toBe(false);
   });
+
+  it("accepts keyEpoch only as a positive integer (ADR-008 rotation counter)", () => {
+    expect(VaultMetaSchema.safeParse(validVault).success).toBe(true);
+    expect(VaultMetaSchema.safeParse({ ...validVault, keyEpoch: 2 }).success).toBe(true);
+    expect(VaultMetaSchema.safeParse({ ...validVault, keyEpoch: 0 }).success).toBe(false);
+    expect(VaultMetaSchema.safeParse({ ...validVault, keyEpoch: -1 }).success).toBe(false);
+    expect(VaultMetaSchema.safeParse({ ...validVault, keyEpoch: 1.5 }).success).toBe(false);
+  });
 });
 
 describe("ItemPlainSchema", () => {

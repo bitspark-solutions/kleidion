@@ -32,6 +32,8 @@ interface Index {
   entries: LoginEntry[];
   vaults: VaultOption[];
   keys: Record<string, Uint8Array>;
+  /** Vault key epoch at build time (ADR-008); detects a rotation elsewhere. */
+  epochs: Record<string, number>;
 }
 
 let cache: Index | null = null;
@@ -110,9 +112,11 @@ export async function buildIndex(session: Session): Promise<Index> {
   const { vaults } = await api.listVaults();
   const keys = await unlockKeys(session, vaults);
   const names: Record<string, string> = {};
+  const epochs: Record<string, number> = {};
   const options: VaultOption[] = [];
   for (const v of vaults) {
     names[v.id] = await decryptName(keys[v.id], v);
+    epochs[v.id] = v.keyEpoch ?? 1;
     options.push({
       id: v.id,
       name: names[v.id],
@@ -155,8 +159,30 @@ export async function buildIndex(session: Session): Promise<Index> {
     }
   }
 
-  cache = { at: Date.now(), entries, vaults: options, keys };
+  cache = { at: Date.now(), entries, vaults: options, keys, epochs };
   return cache;
+}
+
+/**
+ * The key to encrypt a NEW item with, validated against the server's current
+ * epoch. A rotation elsewhere (admin revoking a member, ADR-008) rewrites every
+ * stored row under a fresh key — writing with our now-retired one would create
+ * an item no remaining member can ever decrypt.
+ */
+async function writableKey(session: Session, vaultId: string): Promise<Uint8Array> {
+  let idx = await buildIndex(session);
+  const { vaults } = await api.listVaults();
+  const live = vaults.find((v) => v.id === vaultId)?.keyEpoch ?? 1;
+  if ((idx.epochs[vaultId] ?? 1) !== live) {
+    invalidateIndex();
+    idx = await buildIndex(session); // re-unwraps the new sealed key
+  }
+  const key = idx.keys[vaultId];
+  if (!key) throw new Error("Vault is locked");
+  if ((idx.epochs[vaultId] ?? 1) !== live) {
+    throw new Error("This vault's key changed while you were signed in; lock and unlock again.");
+  }
+  return key;
 }
 
 export interface SaveLoginInput {
@@ -173,9 +199,9 @@ export async function saveLogin(
   input: SaveLoginInput,
 ): Promise<{ itemId: string }> {
   const idx = await buildIndex(session);
-  const key = idx.keys[input.vaultId];
   const vault = idx.vaults.find((v) => v.id === input.vaultId);
-  if (!key || !vault?.canWrite) throw new Error("Vault is locked or read-only");
+  if (!vault?.canWrite) throw new Error("Vault is locked or read-only");
+  const key = await writableKey(session, input.vaultId);
   const plain: ItemPlain = {
     title: input.title,
     fields: [
