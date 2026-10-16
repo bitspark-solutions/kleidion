@@ -49,9 +49,14 @@ func scanItem(row pgx.Row) (*Item, error) {
 
 // lockVaultRow serializes writes within a vault so the per-vault version
 // counter (COALESCE(MAX(version),0)+1) stays monotonic under concurrency.
+// The row lock is what provides that: without FOR UPDATE two concurrent
+// writers could read the same MAX and assign a duplicate version, and a
+// delta-sync client whose cursor passed that number would silently miss one
+// of the two changes.
 func lockVaultRow(ctx context.Context, tx pgx.Tx, vaultID uuid.UUID) error {
 	var id uuid.UUID
-	if err := tx.QueryRow(ctx, `SELECT id FROM vaults WHERE id = $1 AND deleted_at IS NULL`, vaultID).Scan(&id); err != nil {
+	if err := tx.QueryRow(ctx,
+		`SELECT id FROM vaults WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, vaultID).Scan(&id); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrNotFound
 		}

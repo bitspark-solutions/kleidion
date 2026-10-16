@@ -18,9 +18,14 @@ type Vault struct {
 	Kind          string // personal | shared
 	EncryptedMeta []byte
 	Nonce         []byte
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	DeletedAt     *time.Time
+	// KeyEpoch increments on every vault-key rotation (ADR-008). Clients that
+	// unlocked under an older epoch must re-unwrap: their cached key can no
+	// longer decrypt anything on this server.
+	KeyEpoch int64
+
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt *time.Time
 
 	// Role is the calling user's vault_keys role; populated only by
 	// ListVaultsForUser / GetVaultMembership, empty otherwise.
@@ -44,10 +49,10 @@ func (s *Store) CreateVault(ctx context.Context, ownerID uuid.UUID, kind string,
 	const vq = `
 		INSERT INTO vaults (owner_id, kind, encrypted_meta, nonce)
 		VALUES ($1,$2,$3,$4)
-		RETURNING id, owner_id, kind, encrypted_meta, nonce, created_at, updated_at, deleted_at`
+		RETURNING id, owner_id, kind, encrypted_meta, nonce, created_at, updated_at, deleted_at, key_epoch`
 	v := &Vault{}
 	if err := tx.QueryRow(ctx, vq, ownerID, kind, encryptedMeta, nonce).
-		Scan(&v.ID, &v.OwnerID, &v.Kind, &v.EncryptedMeta, &v.Nonce, &v.CreatedAt, &v.UpdatedAt, &v.DeletedAt); err != nil {
+		Scan(&v.ID, &v.OwnerID, &v.Kind, &v.EncryptedMeta, &v.Nonce, &v.CreatedAt, &v.UpdatedAt, &v.DeletedAt, &v.KeyEpoch); err != nil {
 		return nil, fmt.Errorf("create vault: %w", err)
 	}
 
@@ -70,7 +75,7 @@ func (s *Store) CreateVault(ctx context.Context, ownerID uuid.UUID, kind string,
 func (s *Store) ListVaultsForUser(ctx context.Context, userID uuid.UUID) ([]Vault, error) {
 	const q = `
 		SELECT v.id, v.owner_id, v.kind, v.encrypted_meta, v.nonce,
-		       v.created_at, v.updated_at, v.deleted_at, vk.role, vk.wrapped_vault_key
+		       v.created_at, v.updated_at, v.deleted_at, v.key_epoch, vk.role, vk.wrapped_vault_key
 		FROM vaults v
 		JOIN vault_keys vk ON vk.vault_id = v.id AND vk.user_id = $1
 		WHERE v.deleted_at IS NULL
@@ -85,7 +90,7 @@ func (s *Store) ListVaultsForUser(ctx context.Context, userID uuid.UUID) ([]Vaul
 	for rows.Next() {
 		var v Vault
 		if err := rows.Scan(&v.ID, &v.OwnerID, &v.Kind, &v.EncryptedMeta, &v.Nonce,
-			&v.CreatedAt, &v.UpdatedAt, &v.DeletedAt, &v.Role, &v.WrappedVaultKey); err != nil {
+			&v.CreatedAt, &v.UpdatedAt, &v.DeletedAt, &v.KeyEpoch, &v.Role, &v.WrappedVaultKey); err != nil {
 			return nil, fmt.Errorf("scan vault: %w", err)
 		}
 		out = append(out, v)
@@ -145,12 +150,16 @@ type VaultMember struct {
 	Email     string
 	Role      string
 	CreatedAt time.Time
+
+	// MasterPublicKey is the member's X25519 public key. Not secret: an admin
+	// needs it to seal a rotated vault key for this member (ADR-008).
+	MasterPublicKey []byte
 }
 
 // ListVaultMembers returns the members of a vault, oldest join first.
 func (s *Store) ListVaultMembers(ctx context.Context, vaultID uuid.UUID) ([]VaultMember, error) {
 	const q = `
-		SELECT vk.user_id, u.email, vk.role, vk.created_at
+		SELECT vk.user_id, u.email, vk.role, vk.created_at, u.master_public_key
 		FROM vault_keys vk
 		JOIN users u ON u.id = vk.user_id
 		WHERE vk.vault_id = $1
@@ -164,7 +173,7 @@ func (s *Store) ListVaultMembers(ctx context.Context, vaultID uuid.UUID) ([]Vaul
 	var out []VaultMember
 	for rows.Next() {
 		var m VaultMember
-		if err := rows.Scan(&m.UserID, &m.Email, &m.Role, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.UserID, &m.Email, &m.Role, &m.CreatedAt, &m.MasterPublicKey); err != nil {
 			return nil, fmt.Errorf("scan vault member: %w", err)
 		}
 		out = append(out, m)
@@ -221,6 +230,21 @@ func (s *Store) GetVaultMaxVersion(ctx context.Context, vaultID uuid.UUID) (int6
 		return 0, fmt.Errorf("get vault max version: %w", err)
 	}
 	return v, nil
+}
+
+// GetVaultKeyEpoch returns the vault's rotation counter (ADR-008). Clients
+// compare it with the epoch they unlocked under; a change means their cached
+// vault key is stale and must be re-unwrapped from their own wrapped key.
+func (s *Store) GetVaultKeyEpoch(ctx context.Context, vaultID uuid.UUID) (int64, error) {
+	const q = `SELECT key_epoch FROM vaults WHERE id = $1 AND deleted_at IS NULL`
+	var epoch int64
+	if err := s.Pool.QueryRow(ctx, q, vaultID).Scan(&epoch); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, ErrNotFound
+		}
+		return 0, fmt.Errorf("get vault key epoch: %w", err)
+	}
+	return epoch, nil
 }
 
 // GetSyncCursor returns the last version a device acknowledged for a vault.

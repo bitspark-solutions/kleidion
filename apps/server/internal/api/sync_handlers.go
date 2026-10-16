@@ -52,10 +52,18 @@ func (h *syncHandler) changes(c *gin.Context) {
 		respondError(c, http.StatusInternalServerError, "failed to read vault version")
 		return
 	}
+	epoch, err := h.st.GetVaultKeyEpoch(c.Request.Context(), vaultID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "failed to read vault key epoch")
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"changes":       toItemsWire(items),
 		"latestVersion": latest,
 		"hasMore":       false,
+		// keyEpoch lets a polling client notice a rotation (ADR-008) without
+		// another round trip to GET /v1/vaults.
+		"keyEpoch": epoch,
 	})
 }
 

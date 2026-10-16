@@ -58,6 +58,7 @@ func NewRouter(log zerolog.Logger, st *store.Store, cfg config.Config) *gin.Engi
 			registerSessionRoutes(authed, svc, log)
 			registerVaultRoutes(authed, st)
 			registerMemberRoutes(authed, st)
+			registerRotationRoutes(authed, st)
 			registerItemRoutes(authed, st)
 			registerSyncRoutes(authed, st)
 			registerShareRoutes(authed, st)

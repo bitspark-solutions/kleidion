@@ -23,9 +23,12 @@ type vaultMetaWire struct {
 	Role          string `json:"role"`
 	// WrappedVaultKey is the CALLING user's sealed vault key (vault_keys row);
 	// populated on GET /v1/vaults so clients can unwrap per-vault keys (ADR-006).
-	WrappedVaultKey string    `json:"wrappedVaultKey,omitempty"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	WrappedVaultKey string `json:"wrappedVaultKey,omitempty"`
+	// KeyEpoch is the vault's rotation counter (ADR-008). A client holding a
+	// vault key from an older epoch must re-unwrap before decrypting.
+	KeyEpoch  int64     `json:"keyEpoch"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 func toVaultWire(v store.Vault) vaultMetaWire {
@@ -35,6 +38,7 @@ func toVaultWire(v store.Vault) vaultMetaWire {
 		EncryptedMeta: base64.StdEncoding.EncodeToString(v.EncryptedMeta),
 		Nonce:         base64.StdEncoding.EncodeToString(v.Nonce),
 		Role:          v.Role,
+		KeyEpoch:      v.KeyEpoch,
 		CreatedAt:     v.CreatedAt,
 		UpdatedAt:     v.UpdatedAt,
 	}

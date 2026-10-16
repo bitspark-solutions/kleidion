@@ -166,7 +166,16 @@ func (h *itemHandler) list(c *gin.Context) {
 		respondError(c, http.StatusInternalServerError, "failed to read vault version")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": toItemsWire(items), "serverVersion": serverVersion})
+	epoch, err := h.st.GetVaultKeyEpoch(c.Request.Context(), vaultID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, "failed to read vault key epoch")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"items":         toItemsWire(items),
+		"serverVersion": serverVersion,
+		"keyEpoch":      epoch,
+	})
 }
 
 // create handles POST /v1/items (201). The vault version bump happens in the

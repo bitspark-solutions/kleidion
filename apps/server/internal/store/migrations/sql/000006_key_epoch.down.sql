@@ -1,0 +1,1 @@
+ALTER TABLE vaults DROP COLUMN IF EXISTS key_epoch;

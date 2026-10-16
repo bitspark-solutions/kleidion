@@ -37,6 +37,11 @@ type memberWire struct {
 	Email     string    `json:"email"`
 	Role      string    `json:"role"`
 	CreatedAt time.Time `json:"createdAt"`
+	// MasterPublicKey is the member's hex X25519 public key. An admin needs it
+	// to seal a rotated vault key for this member (ADR-008); public keys are
+	// already disclosed to members via /v1/users/lookup, so this adds no new
+	// exposure.
+	MasterPublicKey string `json:"masterPublicKey"`
 }
 
 // requireAdmin resolves the caller's role and demands admin. Returns
@@ -85,7 +90,13 @@ func (h *memberHandler) list(c *gin.Context) {
 	}
 	out := make([]memberWire, 0, len(members))
 	for _, m := range members {
-		out = append(out, memberWire{m.UserID.String(), m.Email, m.Role, m.CreatedAt})
+		out = append(out, memberWire{
+			UserID:          m.UserID.String(),
+			Email:           m.Email,
+			Role:            m.Role,
+			CreatedAt:       m.CreatedAt,
+			MasterPublicKey: hex.EncodeToString(m.MasterPublicKey),
+		})
 	}
 	c.JSON(http.StatusOK, gin.H{"members": out})
 }
@@ -133,7 +144,13 @@ func (h *memberHandler) add(c *gin.Context) {
 		respondError(c, http.StatusInternalServerError, "failed to add member")
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"member": memberWire{target.ID.String(), target.Email, req.Role, time.Now().UTC()}})
+	c.JSON(http.StatusCreated, gin.H{"member": memberWire{
+		UserID:          target.ID.String(),
+		Email:           target.Email,
+		Role:            req.Role,
+		CreatedAt:       time.Now().UTC(),
+		MasterPublicKey: hex.EncodeToString(target.MasterPublicKey),
+	}})
 }
 
 type patchRoleRequest struct {
